@@ -407,28 +407,51 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
-##### 2. **VS Code Integration**
+##### 2. **VS Code with GitHub Copilot Integration**
 
 To use the BugBounty MCP Server with VS Code and GitHub Copilot:
 
-1. **Install the MCP Extension for VS Code:**
+**Prerequisites:**
+- VS Code with GitHub Copilot extension enabled
+- MCP extension for VS Code (if available in marketplace)
+
+**Configuration Steps:**
+
+1. **For Docker Deployment (Recommended):**
+
+   First, ensure your Docker container is running with port 3001 exposed:
    ```bash
-   # Search for MCP extensions in VS Code marketplace
-   # Or install via command line if available
-   code --install-extension <mcp-extension-id>
+   # Start the container with automatic MCP server startup
+   docker-compose up --build -d
+   
+   # Verify the server is accessible on port 3001
+   nc -z localhost 3001 && echo "MCP server is ready"
    ```
 
-2. **Configure VS Code Settings:**
-   
-   Open VS Code settings (`Cmd/Ctrl + ,`) and add MCP server configuration:
-   
-   **For Docker (recommended):**
+   Then configure VS Code MCP settings by opening VS Code settings (`Cmd/Ctrl + ,`) and adding:
    ```json
    {
      "mcp.servers": {
-       "bugbounty-mcp": {
+       "bugbounty-docker": {
+         "command": "nc",
+         "args": ["localhost", "3001"],
+         "description": "BugBounty MCP Server running in Docker",
+         "env": {
+           "LOG_LEVEL": "info"
+         }
+       }
+     }
+   }
+   ```
+
+   **Alternative Docker configuration using direct Docker exec:**
+   ```json
+   {
+     "mcp.servers": {
+       "bugbounty-docker": {
          "command": "docker",
          "args": ["exec", "-i", "bugbounty-mcp-server", "bugbounty-mcp", "serve"],
+         "description": "BugBounty MCP Server via Docker exec",
          "env": {
            "DOCKER_HOST": "unix:///var/run/docker.sock"
          }
@@ -436,14 +459,16 @@ To use the BugBounty MCP Server with VS Code and GitHub Copilot:
      }
    }
    ```
-   
-   **For Native Installation:**
+
+2. **For Native Installation:**
+
    ```json
    {
      "mcp.servers": {
-       "bugbounty-mcp": {
+       "bugbounty-native": {
          "command": "/Users/your-username/Documents/bugbounty-mcp-server/run.sh",
          "args": ["serve"],
+         "description": "BugBounty MCP Server native installation",
          "env": {
            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
          }
@@ -452,39 +477,30 @@ To use the BugBounty MCP Server with VS Code and GitHub Copilot:
    }
    ```
 
-3. **Alternative: Use VS Code Tasks:**
-   
-   Create `.vscode/tasks.json` in your workspace:
-   ```json
-   {
-     "version": "2.0.0",
-     "tasks": [
-       {
-         "label": "Start BugBounty MCP Server",
-         "type": "shell",
-         "command": "./run.sh",
-         "args": ["serve"],
-         "group": "build",
-         "presentation": {
-           "echo": true,
-           "reveal": "always",
-           "focus": false,
-           "panel": "new"
-         },
-         "isBackground": true,
-         "problemMatcher": []
-       }
-     ]
-   }
-   ```
-   
-   Then run the task with `Cmd/Ctrl + Shift + P` → "Tasks: Run Task" → "Start BugBounty MCP Server"
+3. **Verify Connection:**
 
-4. **Verify Integration:**
+   - Restart VS Code or reload the MCP extension
+   - Open the MCP panel in VS Code (if available)
+   - You should see the BugBounty server connected
+   - Test by asking GitHub Copilot: "List available security tools from BugBounty MCP"
+
+4. **Troubleshooting Docker Integration:**
+
+   If using the Docker network approach and experiencing issues:
    
-   - Open VS Code Command Palette (`Cmd/Ctrl + Shift + P`)
-   - Look for MCP-related commands or GitHub Copilot integration
-   - Test by asking Copilot: "List available security tools from BugBounty MCP"
+   ```bash
+   # Check if container is running and healthy
+   docker-compose ps
+   
+   # Test network connectivity
+   nc -z localhost 3001 || echo "Port 3001 not accessible"
+   
+   # Check container logs
+   docker-compose logs -f bugbounty-mcp
+   
+   # Verify MCP server response
+   echo '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}}, "id": 1}' | nc localhost 3001
+   ```
 
 ##### 3. **Custom MCP Clients**
 

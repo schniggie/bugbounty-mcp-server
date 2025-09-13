@@ -366,7 +366,9 @@ bugbounty-mcp --verbose serve
 
 ## Integration Examples
 
-### Claude Desktop Configuration
+### LLM Integration Configurations
+
+#### Claude Desktop Configuration
 
 Add to your Claude Desktop configuration:
 
@@ -384,6 +386,55 @@ Add to your Claude Desktop configuration:
   }
 }
 ```
+
+#### VS Code with GitHub Copilot Configuration
+
+**For Docker Deployment (Network Socket - Recommended):**
+
+1. Start the Docker container with MCP server on port 3001:
+   ```bash
+   docker-compose up --build -d
+   ```
+
+2. Configure VS Code MCP settings (`Cmd/Ctrl + ,`):
+   ```json
+   {
+     "mcp.servers": {
+       "bugbounty-docker": {
+         "command": "nc",
+         "args": ["localhost", "3001"],
+         "description": "BugBounty MCP Server (Docker Network)",
+         "capabilities": {
+           "tools": true,
+           "resources": true
+         }
+       }
+     }
+   }
+   ```
+
+**For Native Installation:**
+
+```json
+{
+  "mcp.servers": {
+    "bugbounty-native": {
+      "command": "/path/to/bugbounty-mcp-server/run.sh",
+      "args": ["serve"],
+      "description": "BugBounty MCP Server (Native)",
+      "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
+**Verification Steps:**
+
+1. Restart VS Code or reload MCP extension
+2. Check MCP panel for connected servers  
+3. Test with GitHub Copilot: "List available security tools"
 
 ### Custom Client Integration
 

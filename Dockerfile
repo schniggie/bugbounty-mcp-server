@@ -74,6 +74,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     dnsutils \
     netcat-traditional \
+    socat \
     # Network scanning tools
     nmap \
     masscan \
@@ -107,6 +108,10 @@ WORKDIR /app
 # Copy application code
 COPY . .
 
+# Copy and set up entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Install the application in the virtual environment
 RUN pip install --no-cache-dir -e .
 
@@ -132,11 +137,14 @@ USER bugbounty
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD bugbounty-mcp validate-config || exit 1
 
-# Expose port (for future web interface)
-EXPOSE 8080
+# Expose port for MCP server
+EXPOSE 3001
 
-# Keep container running - MCP server will be started on demand
-CMD ["tail", "-f", "/dev/null"]
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command starts MCP server
+CMD ["serve"]
 
 # Labels for metadata
 LABEL org.opencontainers.image.title="BugBounty MCP Server"
