@@ -24,7 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Go for Go-based security tools
 ENV GO_VERSION=1.21.5
-RUN curl -fsSL https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+# Detect architecture and install appropriate Go binary
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then GOARCH="amd64"; \
+    elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then GOARCH="arm64"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi && \
+    curl -fsSL https://golang.org/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz | tar -C /usr/local -xzf -
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 ENV PATH="${GOPATH}/bin:${PATH}"
@@ -42,7 +47,7 @@ RUN go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest && \
 # Create Python virtual environment and install dependencies
 WORKDIR /app
 COPY requirements.txt pyproject.toml ./
-RUN python -m venv /app/venv
+RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
@@ -130,8 +135,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Expose port (for future web interface)
 EXPOSE 8080
 
-# Set default command to start the MCP server
-CMD ["bugbounty-mcp", "serve"]
+# Keep container running - MCP server will be started on demand
+CMD ["tail", "-f", "/dev/null"]
 
 # Labels for metadata
 LABEL org.opencontainers.image.title="BugBounty MCP Server"
