@@ -88,8 +88,9 @@ start_mcp_stdio() {
 start_mcp_network() {
     print_info "Starting MCP Server with network socket on port 3001..."
     
-    # Use socat to bridge stdio MCP server to network socket
-    socat TCP-LISTEN:3001,fork,reuseaddr EXEC:"bugbounty-mcp serve",pty,ctty
+    # Use a simpler approach: start MCP server and bridge with socat without fork
+    # This prevents multiple server instances and reduces broken pipe errors
+    exec socat TCP-LISTEN:3001,reuseaddr,keepalive EXEC:"bugbounty-mcp serve",nofork
 }
 
 # Function to run validation and exit
@@ -131,18 +132,12 @@ run_daemon() {
 cleanup() {
     print_info "Shutting down BugBounty MCP Server..."
     
-    # Kill MCP server if running
-    if [ -f "/tmp/mcp.pid" ]; then
-        MCP_PID=$(cat /tmp/mcp.pid)
-        if kill -0 $MCP_PID > /dev/null 2>&1; then
-            print_info "Stopping MCP server (PID: $MCP_PID)"
-            kill -TERM $MCP_PID
-            wait $MCP_PID 2>/dev/null || true
-        fi
-        rm -f /tmp/mcp.pid
-    fi
+    # Kill any remaining processes
+    pkill -f "bugbounty-mcp" || true
+    pkill -f "socat" || true
     
-    # Clean up named pipes
+    # Clean up temporary files
+    rm -f /tmp/mcp*.pid /tmp/mcp*.log
     rm -f /tmp/mcp_in /tmp/mcp_out
     
     print_success "Cleanup complete"
