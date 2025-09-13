@@ -268,9 +268,17 @@ The Docker image includes:
 
 7. **Download wordlists:**
    ```bash
+   # Download all wordlists (recommended)
+   ./run.sh download-wordlists
+   
+   # Or download specific types
    ./run.sh download-wordlists --type subdomains
    ./run.sh download-wordlists --type directories
    ./run.sh download-wordlists --type parameters
+   ./run.sh download-wordlists --type files
+   
+   # See available options
+   ./run.sh download-wordlists --help
    ```
 
 8. **Validate configuration:**

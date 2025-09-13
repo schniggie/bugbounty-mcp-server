@@ -103,20 +103,12 @@ RUN mkdir -p wordlists output data logs cache && \
     chown -R bugbounty:bugbounty /app && \
     chmod +x run.sh
 
-# Download essential wordlists
-RUN curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt" \
-    -o wordlists/subdomains.txt && \
-    curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt" \
-    -o wordlists/directories.txt && \
-    curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt" \
-    -o wordlists/parameters.txt && \
-    curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt" \
-    -o wordlists/common_files.txt && \
-    curl -fsSL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-medium.txt" \
-    -o wordlists/directory-list-medium.txt || true
-
 # Set up default environment file
 RUN cp env.example .env
+
+# Download wordlists using our enhanced download script
+# This uses the proper CLI command with error handling and progress feedback
+RUN ./run.sh download-wordlists --type all || true
 
 # Set correct permissions
 RUN chown -R bugbounty:bugbounty /app

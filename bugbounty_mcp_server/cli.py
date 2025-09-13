@@ -191,55 +191,105 @@ def list_tools(ctx):
 
 @cli.command()
 @click.option('--type', 'wordlist_type', 
-              type=click.Choice(['subdomains', 'directories', 'parameters', 'files']),
-              required=True, help='Type of wordlist to download')
+              type=click.Choice(['subdomains', 'directories', 'parameters', 'files', 'all']),
+              default='all', help='Type of wordlist to download')
 @click.option('--source', default='seclists', help='Source repository')
 def download_wordlists(wordlist_type, source):
     """Download common wordlists for scanning."""
-    click.echo(f"Downloading {wordlist_type} wordlists from {source}...")
+    import requests
+    from urllib.parse import urlparse
+    
+    click.echo(f"📥 Downloading {wordlist_type} wordlists from {source}...")
     
     # Create wordlists directory
     wordlists_dir = Path("wordlists")
     wordlists_dir.mkdir(exist_ok=True)
     
-    # URLs for common wordlists
+    # URLs for common wordlists with their target filenames
     wordlist_urls = {
         'subdomains': [
-            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt'
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt', 'subdomains.txt'),
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns-Jhaddix.txt', 'subdomains-jhaddix.txt'),
         ],
         'directories': [
-            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-medium.txt'
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt', 'directories.txt'),
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt', 'directory-list-medium.txt'),
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt', 'directories-big.txt'),
         ],
         'parameters': [
-            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt'
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt', 'parameters.txt'),
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/api/objects.txt', 'api-parameters.txt'),
         ],
         'files': [
-            'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt'
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt', 'common_files.txt'),
+            ('https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt', 'raft-files.txt'),
         ]
     }
     
-    urls = wordlist_urls.get(wordlist_type, [])
+    # Determine which wordlists to download
+    if wordlist_type == 'all':
+        urls_to_download = []
+        for category_urls in wordlist_urls.values():
+            urls_to_download.extend(category_urls)
+    else:
+        urls_to_download = wordlist_urls.get(wordlist_type, [])
     
-    if not urls:
-        click.echo(f"No wordlists available for type: {wordlist_type}", err=True)
+    if not urls_to_download:
+        click.echo(f"❌ No wordlists available for type: {wordlist_type}", err=True)
         return
     
-    for url in urls:
-        filename = url.split('/')[-1]
+    successful_downloads = 0
+    failed_downloads = 0
+    
+    for url, filename in urls_to_download:
         filepath = wordlists_dir / filename
         
-        click.echo(f"Downloading {filename}...")
+        click.echo(f"📥 Downloading {filename}...")
         
-        # This would implement actual download
-        # For now, just create placeholder files
-        with open(filepath, 'w') as f:
-            f.write(f"# {wordlist_type} wordlist\n")
-            f.write("# This is a placeholder file\n")
-            f.write("# In a real implementation, this would contain wordlist entries\n")
-        
-        click.echo(f"✓ Saved to {filepath}")
+        try:
+            # Download with requests
+            response = requests.get(url, timeout=30, stream=True)
+            response.raise_for_status()
+            
+            # Save the file
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            # Check file size
+            file_size = filepath.stat().st_size
+            if file_size > 100:  # File should be larger than 100 bytes
+                file_size_mb = file_size / (1024 * 1024)
+                if file_size_mb > 1:
+                    size_str = f"{file_size_mb:.1f} MB"
+                else:
+                    size_str = f"{file_size / 1024:.1f} KB"
+                
+                click.echo(f"   ✅ Downloaded {filename} ({size_str})")
+                successful_downloads += 1
+            else:
+                click.echo(f"   ❌ Downloaded {filename} but file seems too small")
+                filepath.unlink()  # Remove small/empty file
+                failed_downloads += 1
+                
+        except requests.RequestException as e:
+            click.echo(f"   ❌ Failed to download {filename}: {str(e)}")
+            failed_downloads += 1
+        except Exception as e:
+            click.echo(f"   ❌ Error saving {filename}: {str(e)}")
+            failed_downloads += 1
     
-    click.echo("Download complete!")
+    # Summary
+    click.echo(f"\n📊 Download Summary:")
+    click.echo(f"   ✅ Successful: {successful_downloads}")
+    click.echo(f"   ❌ Failed: {failed_downloads}")
+    
+    if successful_downloads > 0:
+        click.echo(f"\n📂 Wordlists saved in: {wordlists_dir.absolute()}")
+        click.echo("🎉 Download complete! You can now use these wordlists for scanning.")
+    else:
+        click.echo("\n❌ No wordlists were downloaded successfully.")
+        click.echo("💡 Check your internet connection and try again.")
 
 
 @cli.command()
