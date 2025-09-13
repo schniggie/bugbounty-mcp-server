@@ -232,27 +232,64 @@ download_wordlists() {
     # Ensure wordlists directory exists
     mkdir -p wordlists
     
-    # Define wordlists to download (URL|FILENAME)
-    local wordlists=(
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt|subdomains-top1million-110000.txt"
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt|directory-list-quickhits.txt"
+    # Use the enhanced CLI command if bugbounty-mcp is available
+    if command -v bugbounty-mcp >/dev/null 2>&1; then
+        log_info "Using enhanced wordlist downloader from CLI..."
+        
+        # Activate virtual environment if available
+        if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+            source venv/bin/activate
+        fi
+        
+        # Download using the CLI command (which has robust error handling and progress)
+        if bugbounty-mcp download-wordlists --type all; then
+            log_success "Wordlists downloaded successfully using CLI command"
+            
+            # Show what was downloaded
+            if [ -d "wordlists" ] && [ "$(ls -A wordlists/*.txt 2>/dev/null | wc -l)" -gt 0 ]; then
+                log_info "Downloaded wordlists:"
+                ls -lh wordlists/*.txt 2>/dev/null | grep -v "total" | head -8
+                
+                # Count total files and size
+                local file_count
+                file_count=$(ls -1 wordlists/*.txt 2>/dev/null | wc -l)
+                log_success "Successfully downloaded $file_count wordlist files"
+            fi
+            return 0
+        else
+            log_warning "CLI download failed, falling back to manual download..."
+        fi
+    else
+        log_warning "bugbounty-mcp not available, using manual download..."
+    fi
+    
+    # Fallback to manual download using the same URLs as cli.py
+    log_info "Downloading wordlists manually..."
+    
+    # Define wordlists with same URLs and filenames as cli.py for consistency
+    local wordlist_urls=(
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt|subdomains.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns-Jhaddix.txt|subdomains-jhaddix.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt|directories.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt|directory-list-medium.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt|directories-big.txt"
         "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt|parameters.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/api/objects.txt|api-parameters.txt"
         "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt|common_files.txt"
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt|big.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt|raft-files.txt"
     )
     
-    local total_files=${#wordlists[@]}
     local downloaded=0
     local failed=0
     
-    for wordlist_entry in "${wordlists[@]}"; do
+    for wordlist_entry in "${wordlist_urls[@]}"; do
         IFS='|' read -r url filename <<< "$wordlist_entry"
         local path="wordlists/$filename"
         
-        log_info "Downloading $filename..."
+        log_info "📥 Downloading $filename..."
         
         if curl -s -L --max-time 30 "$url" -o "$path"; then
-            # Verify the download was successful (file size > 1KB)
+            # Verify the download was successful (file size > 100 bytes)
             local file_size
             if command -v stat >/dev/null 2>&1; then
                 file_size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path" 2>/dev/null || echo 0)
@@ -260,46 +297,44 @@ download_wordlists() {
                 file_size=$(wc -c < "$path" 2>/dev/null || echo 0)
             fi
             
-            if [ -f "$path" ] && [ "$file_size" -gt 1024 ]; then
+            if [ -f "$path" ] && [ "$file_size" -gt 100 ]; then
                 local file_size_human
                 if command -v du >/dev/null 2>&1; then
                     file_size_human=$(du -h "$path" | cut -f1)
                 else
-                    file_size_human="${file_size} bytes"
+                    file_size_mb=$((file_size / 1024 / 1024))
+                    if [ "$file_size_mb" -gt 0 ]; then
+                        file_size_human="${file_size_mb} MB"
+                    else
+                        file_size_kb=$((file_size / 1024))
+                        file_size_human="${file_size_kb} KB"
+                    fi
                 fi
-                log_success "✓ Downloaded $filename ($file_size_human)"
+                log_success "   ✅ Downloaded $filename ($file_size_human)"
                 downloaded=$((downloaded + 1))
             else
-                log_warning "✗ Downloaded $filename but file seems too small"
+                log_warning "   ❌ Downloaded $filename but file seems too small"
                 rm -f "$path"
                 failed=$((failed + 1))
             fi
         else
-            log_warning "✗ Failed to download $filename"
+            log_warning "   ❌ Failed to download $filename"
             failed=$((failed + 1))
         fi
     done
     
-    # Create symlinks for common names
-    if [ -f "wordlists/subdomains-top1million-110000.txt" ]; then
-        ln -sf "subdomains-top1million-110000.txt" "wordlists/subdomains.txt"
-    fi
-    if [ -f "wordlists/directory-list-quickhits.txt" ]; then
-        ln -sf "directory-list-quickhits.txt" "wordlists/directories.txt"
-    fi
-    
-    log_info "Wordlist download summary: $downloaded successful, $failed failed"
+    log_info "📊 Download Summary:"
+    log_info "   ✅ Successful: $downloaded"
+    log_info "   ❌ Failed: $failed"
     
     if [ "$downloaded" -gt 0 ]; then
         log_success "Wordlists download completed successfully"
-        log_info "Downloaded wordlists:"
-        ls -lh wordlists/*.txt 2>/dev/null | grep -v "total" || true
+        log_info "📂 Wordlists saved in: $(pwd)/wordlists"
+        log_info "🎉 Download complete! You can now use these wordlists for scanning."
     else
         log_warning "No wordlists were downloaded successfully"
-        log_info "You can download them manually later with:"
-        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt -o wordlists/subdomains.txt"
-        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt -o wordlists/directories.txt"
-        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt -o wordlists/parameters.txt"
+        log_info "💡 Check your internet connection and try again."
+        log_info "You can also run later with: ./run.sh download-wordlists"
     fi
 }
 
