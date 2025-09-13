@@ -399,7 +399,86 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
-##### 2. **Custom MCP Clients**
+##### 2. **VS Code Integration**
+
+To use the BugBounty MCP Server with VS Code and GitHub Copilot:
+
+1. **Install the MCP Extension for VS Code:**
+   ```bash
+   # Search for MCP extensions in VS Code marketplace
+   # Or install via command line if available
+   code --install-extension <mcp-extension-id>
+   ```
+
+2. **Configure VS Code Settings:**
+   
+   Open VS Code settings (`Cmd/Ctrl + ,`) and add MCP server configuration:
+   
+   **For Docker (recommended):**
+   ```json
+   {
+     "mcp.servers": {
+       "bugbounty-mcp": {
+         "command": "docker",
+         "args": ["exec", "-i", "bugbounty-mcp-server", "bugbounty-mcp", "serve"],
+         "env": {
+           "DOCKER_HOST": "unix:///var/run/docker.sock"
+         }
+       }
+     }
+   }
+   ```
+   
+   **For Native Installation:**
+   ```json
+   {
+     "mcp.servers": {
+       "bugbounty-mcp": {
+         "command": "/Users/your-username/Documents/bugbounty-mcp-server/run.sh",
+         "args": ["serve"],
+         "env": {
+           "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+         }
+       }
+     }
+   }
+   ```
+
+3. **Alternative: Use VS Code Tasks:**
+   
+   Create `.vscode/tasks.json` in your workspace:
+   ```json
+   {
+     "version": "2.0.0",
+     "tasks": [
+       {
+         "label": "Start BugBounty MCP Server",
+         "type": "shell",
+         "command": "./run.sh",
+         "args": ["serve"],
+         "group": "build",
+         "presentation": {
+           "echo": true,
+           "reveal": "always",
+           "focus": false,
+           "panel": "new"
+         },
+         "isBackground": true,
+         "problemMatcher": []
+       }
+     ]
+   }
+   ```
+   
+   Then run the task with `Cmd/Ctrl + Shift + P` → "Tasks: Run Task" → "Start BugBounty MCP Server"
+
+4. **Verify Integration:**
+   
+   - Open VS Code Command Palette (`Cmd/Ctrl + Shift + P`)
+   - Look for MCP-related commands or GitHub Copilot integration
+   - Test by asking Copilot: "List available security tools from BugBounty MCP"
+
+##### 3. **Custom MCP Clients**
 
 ```python
 import asyncio
@@ -427,7 +506,7 @@ async def use_bugbounty_mcp():
 asyncio.run(use_bugbounty_mcp())
 ```
 
-##### 3. **Integration Examples**
+##### 4. **Integration Examples**
 
 **Start the server and test:**
 ```bash
