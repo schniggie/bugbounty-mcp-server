@@ -132,7 +132,7 @@ The easiest way to get started is using Docker, which includes all dependencies 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/bugbounty-mcp-server.git
+   git clone https://github.com/gokulapap/bugbounty-mcp-server.git
    cd bugbounty-mcp-server
    ```
 
@@ -213,7 +213,7 @@ The Docker image includes:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/bugbounty-mcp-server.git
+   git clone https://github.com/gokulapap/bugbounty-mcp-server.git
    cd bugbounty-mcp-server
    ```
 
@@ -846,7 +846,7 @@ We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.
 
 1. **Clone and install in development mode:**
    ```bash
-   git clone https://github.com/yourusername/bugbounty-mcp-server.git
+   git clone https://github.com/gokulapap/bugbounty-mcp-server.git
    cd bugbounty-mcp-server
    pip install -e ".[dev]"
    ```
@@ -881,8 +881,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/bugbounty-mcp-server/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/bugbounty-mcp-server/discussions)
+- **Issues**: [GitHub Issues](https://github.com/gokulapap/bugbounty-mcp-server/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/gokulapap/bugbounty-mcp-server/discussions)
 - **Security**: See [SECURITY.md](SECURITY.md) for reporting security issues
 
 ## 🚀 Roadmap
