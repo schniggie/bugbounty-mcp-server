@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bugbounty-mcp-server"
+version = "1.0.0"
+description = "Comprehensive MCP server for bug bounty hunting and web application penetration testing"
+authors = [{name = "Bug Bounty Hunter", email = "hunter@security.com"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP",
+]
+dependencies = [
+    "mcp>=0.9.0",
+    "aiohttp>=3.8.0",
+    "dnspython>=2.3.0",
+    "python-nmap>=0.7.1",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "selenium>=4.15.0",
+    "shodan>=1.28.0",
+    "censys>=2.2.0",
+    "sublist3r",
+    "wappalyzer>=0.3.1",
+    "paramiko>=3.3.0",
+    "pyjwt>=2.8.0",
+    "cryptography>=41.0.0",
+    "sqlparse>=0.4.4",
+    "lxml>=4.9.0",
+    "pydantic>=2.0.0",
+    "click>=8.1.0",
+    "colorama>=0.4.6",
+    "tabulate>=0.9.0",
+    "tqdm>=4.66.0",
+    "python-dotenv>=1.0.0",
+    "pyotp>=2.9.0",
+    "qrcode>=7.4.0",
+    "nuclei-sdk",
+    "httpx>=0.25.0",
+    "asyncssh>=2.14.0",
+    "python-masscan>=0.1.6",
+    "psutil>=5.9.0",
+    "ipaddress",
+    "validators>=0.22.0",
+    "fake-useragent>=1.4.0",
+    "cloudscraper>=1.2.71",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+]
+
+[project.scripts]
+bugbounty-mcp = "bugbounty_mcp_server.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/bugbounty-mcp-server"
+Repository = "https://github.com/yourusername/bugbounty-mcp-server"
+Issues = "https://github.com/yourusername/bugbounty-mcp-server/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bugbounty_mcp_server*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
