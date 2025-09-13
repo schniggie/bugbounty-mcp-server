@@ -290,7 +290,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=your-username
+User=gokul
 WorkingDirectory=/path/to/bugbounty-mcp-server
 ExecStart=/path/to/bugbounty-mcp-server/run.sh serve
 Restart=always

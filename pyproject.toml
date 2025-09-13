@@ -46,9 +46,9 @@ dev = [
 bugbounty-mcp = "bugbounty_mcp_server.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/bugbounty-mcp-server"
-Repository = "https://github.com/yourusername/bugbounty-mcp-server"
-Issues = "https://github.com/yourusername/bugbounty-mcp-server/issues"
+Homepage = "https://github.com/gokulapap/bugbounty-mcp-server"
+Repository = "https://github.com/gokulapap/bugbounty-mcp-server"
+Issues = "https://github.com/gokulapap/bugbounty-mcp-server/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
