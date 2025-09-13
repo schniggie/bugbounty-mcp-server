@@ -17,32 +17,53 @@ This guide provides detailed examples of how to use the BugBounty MCP Server for
 
 ### First Run
 
-After installation, validate your setup:
+After installation, validate your setup using the convenient `run.sh` script:
 
 ```bash
-# Check configuration
-bugbounty-mcp validate-config
+# Navigate to the project directory
+cd bugbounty-mcp-server
 
-# List available tools
-bugbounty-mcp list-tools
+# Check configuration and tool availability
+./run.sh validate-config
 
-# Start the server
-bugbounty-mcp serve
+# List all 92+ available tools
+./run.sh list-tools
+
+# Start the MCP server
+./run.sh serve
 ```
 
 ### Basic Configuration
 
-Create a configuration file:
+Create and customize a configuration file:
 
 ```bash
-# Export default config
-bugbounty-mcp export-config -o config.yaml
+# Export default config template
+./run.sh export-config --format yaml -o config.yaml
 
 # Edit the configuration
 nano config.yaml
 
+# Copy environment template and configure API keys
+cp env.example .env
+nano .env
+
 # Start with custom config
-bugbounty-mcp --config config.yaml serve
+./run.sh --config config.yaml serve
+```
+
+### Quick Commands Reference
+
+```bash
+# All commands use the convenient run.sh wrapper:
+
+./run.sh --help                              # Show all available commands
+./run.sh serve                               # Start MCP server
+./run.sh validate-config                     # Validate setup
+./run.sh list-tools                          # List all tools
+./run.sh quick-scan --target example.com     # Quick security scan
+./run.sh download-wordlists --type subdomains # Download wordlists
+./run.sh export-config --format yaml         # Export config template
 ```
 
 ## Basic Reconnaissance

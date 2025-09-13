@@ -119,9 +119,9 @@ A comprehensive Model Context Protocol (MCP) server for bug bounty hunting and w
 
 ### Prerequisites
 
-- Python 3.9 or higher
-- pip (Python package installer)
-- Git
+- **Python 3.10 or higher** (Python 3.11+ recommended)
+- **Git**
+- **macOS, Linux, or Windows with WSL**
 
 ### Quick Start
 
@@ -131,19 +131,37 @@ A comprehensive Model Context Protocol (MCP) server for bug bounty hunting and w
    cd bugbounty-mcp-server
    ```
 
-2. **Install dependencies:**
+2. **Run the automated installation:**
    ```bash
+   # Make the run script executable
+   chmod +x run.sh
+   
+   # Install everything automatically
+   ./install.sh
+   ```
+
+   **OR for manual installation:**
+
+3. **Create virtual environment:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+4. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
    pip install -e .
    ```
 
-3. **Install external tools** (optional but recommended):
+5. **Install external security tools** (optional but recommended):
    ```bash
    # On Ubuntu/Debian
    sudo apt update
-   sudo apt install nmap masscan nikto dirb
+   sudo apt install nmap masscan nikto dirb sqlmap
    
    # On macOS with Homebrew
-   brew install nmap masscan nikto dirb
+   brew install nmap masscan nikto dirb sqlmap
    
    # Install Go-based tools
    go install github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
@@ -153,64 +171,180 @@ A comprehensive Model Context Protocol (MCP) server for bug bounty hunting and w
    go install github.com/ffuf/ffuf@latest
    ```
 
-4. **Configure API keys** (optional):
+6. **Configure API keys** (optional):
    ```bash
-   # Export environment variables
-   export SHODAN_API_KEY="your_shodan_key"
-   export VIRUSTOTAL_API_KEY="your_vt_key"
-   export CENSYS_API_ID="your_censys_id"
-   export CENSYS_API_SECRET="your_censys_secret"
-   export GITHUB_TOKEN="your_github_token"
-   export SECURITYTRAILS_API_KEY="your_st_key"
-   export HUNTER_IO_API_KEY="your_hunter_key"
-   export BINARYEDGE_API_KEY="your_be_key"
+   # Copy environment template
+   cp env.example .env
+   
+   # Edit .env file with your API keys
+   nano .env
    ```
 
-5. **Download wordlists:**
+7. **Download wordlists:**
    ```bash
-   bugbounty-mcp download-wordlists --type subdomains
-   bugbounty-mcp download-wordlists --type directories
-   bugbounty-mcp download-wordlists --type parameters
+   ./run.sh download-wordlists --type subdomains
+   ./run.sh download-wordlists --type directories
+   ./run.sh download-wordlists --type parameters
    ```
 
-6. **Validate configuration:**
+8. **Validate configuration:**
    ```bash
-   bugbounty-mcp validate-config
-   ```
-
-7. **Start the MCP server:**
-   ```bash
-   bugbounty-mcp serve
+   ./run.sh validate-config
    ```
 
 ## 🎯 Usage
 
-### Command Line Interface
+### Starting the MCP Server
+
+#### 🚀 Quick Start with run.sh
+
+The easiest way to start the server is using the provided `run.sh` script:
 
 ```bash
+# Navigate to the project directory
+cd bugbounty-mcp-server
+
 # Start the MCP server
-bugbounty-mcp serve
+./run.sh serve
+```
 
-# List all available tools
-bugbounty-mcp list-tools
+The script will:
+- ✅ Automatically activate the virtual environment
+- ✅ Load environment variables from `.env` file
+- ✅ Display server status and available tools
+- ✅ Start the MCP server for LLM integration
 
-# Validate configuration
-bugbounty-mcp validate-config
+#### 📋 Command Line Interface
 
-# Quick scan (demonstration)
-bugbounty-mcp quick-scan -t example.com
+```bash
+# List all available commands
+./run.sh --help
 
-# Export default configuration
+# Start the MCP server
+./run.sh serve
+
+# List all 92+ available tools
+./run.sh list-tools
+
+# Validate configuration and tool availability
+./run.sh validate-config
+
+# Perform a quick security scan
+./run.sh quick-scan --target example.com
+
+# Download security wordlists
+./run.sh download-wordlists --type subdomains
+
+# Export configuration template
+./run.sh export-config --format yaml
 bugbounty-mcp export-config --format yaml -o config.yaml
 ```
 
-### MCP Client Integration
+### 🤖 MCP Server Integration with LLMs
 
-The server implements the Model Context Protocol, allowing integration with various LLM clients:
+The BugBounty MCP Server implements the **Model Context Protocol (MCP)**, enabling seamless integration with various LLM applications for natural language penetration testing.
 
-1. **Claude Desktop**: Add to your configuration
-2. **OpenAI ChatGPT**: Use with custom GPT
-3. **Local LLM**: Integrate with Ollama, LM Studio, etc.
+#### 🔗 Supported LLM Clients
+
+##### 1. **Claude Desktop** (Recommended)
+
+Add to your Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "bugbounty-mcp": {
+      "command": "/Users/your-username/Documents/bugbounty-mcp-server/run.sh",
+      "args": ["serve"],
+      "env": {
+        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
+##### 2. **Custom MCP Clients**
+
+```python
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import stdio_client
+
+async def use_bugbounty_mcp():
+    async with stdio_client(["./run.sh", "serve"]) as (read, write):
+        async with ClientSession(read, write) as session:
+            # Initialize the session
+            await session.initialize()
+            
+            # List available tools
+            tools = await session.list_tools()
+            print(f"Available tools: {len(tools)}")
+            
+            # Call a tool
+            result = await session.call_tool(
+                "subdomain_enumeration",
+                {"domain": "example.com", "passive_only": True}
+            )
+            print(result)
+
+# Run the client
+asyncio.run(use_bugbounty_mcp())
+```
+
+##### 3. **Integration Examples**
+
+**Start the server and test:**
+```bash
+# Terminal 1: Start the MCP server
+./run.sh serve
+
+# Terminal 2: Test with any MCP client
+# The server will be listening on stdio for MCP protocol messages
+```
+
+**Example LLM conversation:**
+```
+User: "Please perform a comprehensive security assessment of example.com"
+
+LLM: I'll help you conduct a comprehensive security assessment using the BugBounty MCP tools. Let me start by gathering information about the target.
+
+[The LLM will automatically use tools like:]
+- subdomain_enumeration to find subdomains
+- port_scanning to identify open services  
+- vulnerability_scanning to detect security issues
+- web_directory_scanning to find hidden files
+- And 90+ other security tools as needed
+```
+
+#### 🔧 Troubleshooting MCP Integration
+
+**If the server doesn't start in Claude Desktop:**
+
+1. **Check the path in your config:**
+   ```bash
+   # Get the absolute path
+   pwd
+   # Use this full path in claude_desktop_config.json
+   ```
+
+2. **Verify the run.sh script is executable:**
+   ```bash
+   chmod +x run.sh
+   ```
+
+3. **Test the server manually:**
+   ```bash
+   ./run.sh serve
+   # Should show "BugBounty MCP Server started successfully"
+   ```
+
+4. **Check Claude Desktop logs:**
+   - **macOS**: `~/Library/Logs/Claude/`
+   - **Windows**: `%LOCALAPPDATA%\Claude\logs\`
 
 ### Example Configuration
 
@@ -413,6 +547,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [ProjectDiscovery](https://projectdiscovery.io/) for excellent security tools
 - [SecLists](https://github.com/danielmiessler/SecLists) for comprehensive wordlists
 - The bug bounty and security research community
+
+## 📚 Documentation
+
+- **[RUN_SCRIPT.md](RUN_SCRIPT.md)** - Detailed `run.sh` script documentation
+- **[USAGE.md](USAGE.md)** - Comprehensive usage examples and workflows
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[env.example](env.example)** - Environment configuration template
 
 ## 📞 Support
 

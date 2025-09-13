@@ -1,3 +1,0 @@
-# subdomains wordlist
-# This is a placeholder file
-# In a real implementation, this would contain wordlist entries

@@ -134,28 +134,80 @@ setup_directories() {
 }
 
 download_wordlists() {
-    log_info "Downloading wordlists..."
+    log_info "Downloading security wordlists..."
     
-    # SecLists wordlists
-    local wordlist_urls=(
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt:wordlists/subdomains.txt"
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/directory-list-2.3-medium.txt:wordlists/directories.txt"
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt:wordlists/parameters.txt"
-        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt:wordlists/common_files.txt"
+    # Ensure wordlists directory exists
+    mkdir -p wordlists
+    
+    # Define wordlists to download (URL|FILENAME)
+    local wordlists=(
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt|subdomains-top1million-110000.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt|directory-list-quickhits.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt|parameters.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt|common_files.txt"
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt|big.txt"
     )
     
-    for url_path in "${wordlist_urls[@]}"; do
-        IFS=':' read -r url path <<< "$url_path"
-        log_info "Downloading $(basename "$path")..."
+    local total_files=${#wordlists[@]}
+    local downloaded=0
+    local failed=0
+    
+    for wordlist_entry in "${wordlists[@]}"; do
+        IFS='|' read -r url filename <<< "$wordlist_entry"
+        local path="wordlists/$filename"
         
-        if curl -s -L "$url" -o "$path"; then
-            log_success "Downloaded $(basename "$path")"
+        log_info "Downloading $filename..."
+        
+        if curl -s -L --max-time 30 "$url" -o "$path"; then
+            # Verify the download was successful (file size > 1KB)
+            local file_size
+            if command -v stat >/dev/null 2>&1; then
+                file_size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path" 2>/dev/null || echo 0)
+            else
+                file_size=$(wc -c < "$path" 2>/dev/null || echo 0)
+            fi
+            
+            if [ -f "$path" ] && [ "$file_size" -gt 1024 ]; then
+                local file_size_human
+                if command -v du >/dev/null 2>&1; then
+                    file_size_human=$(du -h "$path" | cut -f1)
+                else
+                    file_size_human="${file_size} bytes"
+                fi
+                log_success "✓ Downloaded $filename ($file_size_human)"
+                downloaded=$((downloaded + 1))
+            else
+                log_warning "✗ Downloaded $filename but file seems too small"
+                rm -f "$path"
+                failed=$((failed + 1))
+            fi
         else
-            log_warning "Failed to download $(basename "$path")"
+            log_warning "✗ Failed to download $filename"
+            failed=$((failed + 1))
         fi
     done
     
-    log_success "Wordlists download completed"
+    # Create symlinks for common names
+    if [ -f "wordlists/subdomains-top1million-110000.txt" ]; then
+        ln -sf "subdomains-top1million-110000.txt" "wordlists/subdomains.txt"
+    fi
+    if [ -f "wordlists/directory-list-quickhits.txt" ]; then
+        ln -sf "directory-list-quickhits.txt" "wordlists/directories.txt"
+    fi
+    
+    log_info "Wordlist download summary: $downloaded successful, $failed failed"
+    
+    if [ "$downloaded" -gt 0 ]; then
+        log_success "Wordlists download completed successfully"
+        log_info "Downloaded wordlists:"
+        ls -lh wordlists/*.txt 2>/dev/null | grep -v "total" || true
+    else
+        log_warning "No wordlists were downloaded successfully"
+        log_info "You can download them manually later with:"
+        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt -o wordlists/subdomains.txt"
+        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/quickhits.txt -o wordlists/directories.txt"
+        log_info "  curl -L https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt -o wordlists/parameters.txt"
+    fi
 }
 
 setup_environment() {
