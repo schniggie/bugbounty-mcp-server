@@ -828,7 +828,7 @@ This tool is designed for **authorized security testing only**. Users must:
 
 ### Legal Disclaimer
 
-Users are solely responsible for ensuring their use of this tool complies with applicable laws and regulations. The authors are not responsible for any misuse or damage caused by this software.
+Users are solely responsible for ensuring their use of this tool complies with applicable laws and regulations. Gokul (apgokul008@gmail.com) is not responsible for any misuse or damage caused by this software.
 
 ## 🤝 Contributing
 

@@ -92,7 +92,7 @@ chmod 700 data/                # Data directory
 If you discover a security vulnerability in the BugBounty MCP Server itself:
 
 1. **Do NOT** create a public GitHub issue
-2. Email security reports to: [security@example.com]
+2. Email security reports to: [apgokul008@gmail.com]
 3. Include detailed information about the vulnerability
 4. Allow reasonable time for response before public disclosure
 
@@ -237,18 +237,18 @@ Users should have knowledge of:
 ## Contact Information
 
 ### Security Team
-- Email: security@example.com
+- Email: apgokul008@gmail.com
 - PGP Key: [Link to public key]
 - Response Time: 48 hours
 
 ### Legal Questions
-- Email: legal@example.com
+- Email: apgokul008@gmail.com
 - Phone: [Phone number]
 - Business Hours: 9 AM - 5 PM EST
 
 ### General Support
 - GitHub Issues: For non-security issues
-- Email: support@example.com
+- Email: apgokul008@gmail.com
 - Documentation: README.md
 
 ---

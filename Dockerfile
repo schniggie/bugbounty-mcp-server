@@ -138,6 +138,6 @@ CMD ["bugbounty-mcp", "serve"]
 LABEL org.opencontainers.image.title="BugBounty MCP Server"
 LABEL org.opencontainers.image.description="Comprehensive Model Context Protocol server for bug bounty hunting and penetration testing"
 LABEL org.opencontainers.image.version="1.0.0"
-LABEL org.opencontainers.image.authors="BugBounty MCP Team"
+LABEL org.opencontainers.image.authors="Gokul <apgokul008@gmail.com>"
 LABEL org.opencontainers.image.source="https://github.com/yourusername/bugbounty-mcp-server"
 LABEL org.opencontainers.image.licenses="MIT"

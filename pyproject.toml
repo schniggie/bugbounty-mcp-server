@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "bugbounty-mcp-server"
 version = "1.0.0"
 description = "Comprehensive MCP server for bug bounty hunting and web application penetration testing"
-authors = [{name = "Bug Bounty Hunter", email = "hunter@security.com"}]
+authors = [{name = "Gokul", email = "apgokul008@gmail.com"}]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.9"
