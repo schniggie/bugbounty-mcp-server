@@ -2,20 +2,24 @@
 # Multi-stage build for optimized image size
 
 # Stage 1: Builder stage with all build dependencies
-FROM python:3.11-slim-bookworm as builder
+FROM ubuntu:22.04 as builder
 
 # Set environment variables for build
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install build dependencies
+# Install build dependencies including Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     curl \
     wget \
     ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go for Go-based security tools
@@ -44,7 +48,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime stage with minimal dependencies
-FROM python:3.11-slim-bookworm
+FROM ubuntu:22.04
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -78,8 +82,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # SSL tools
     openssl \
     # Browser automation (for Selenium/Playwright)
-    chromium \
-    # Python runtime deps
+    chromium-browser \
+    # Python runtime
+    python3 \
+    python3-pip \
+    python3-venv \
     python3-distutils \
     && rm -rf /var/lib/apt/lists/*
 
