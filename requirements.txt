@@ -1,7 +1,7 @@
 # Core MCP Server dependencies
-mcp>=0.9.0
+git+https://github.com/modelcontextprotocol/python-sdk.git
 # asyncio is built into Python 3.7+
-pydantic>=2.0.0
+pydantic>=2.11.0,<3.0.0
 click>=8.1.0
 
 # HTTP and networking
@@ -26,9 +26,9 @@ pyotp>=2.9.0
 # Database and data parsing
 sqlparse>=0.4.4
 
-# API integrations
-shodan>=1.28.0
-censys>=2.2.0
+# API integrations (install separately if needed)
+# shodan>=1.28.0
+# censys>=2.2.0
 
 # Utility libraries
 colorama>=0.4.6

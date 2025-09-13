@@ -118,16 +118,24 @@ class BugBountyMCPServer:
         from mcp.server.stdio import stdio_server
         
         await self.start()
-        async with stdio_server(StdioServerParameters()) as (read_stream, write_stream):
+        async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
                 read_stream,
                 write_stream,
                 InitializationOptions(
                     server_name="bugbounty-mcp-server",
                     server_version="1.0.0",
-                    capabilities=self.server.get_capabilities(
-                        notification_options=None,
-                        experimental_capabilities=None,
-                    ),
+                    capabilities={
+                        "tools": {
+                            "listChanged": False
+                        },
+                        "resources": {
+                            "subscribe": False,
+                            "listChanged": False
+                        },
+                        "prompts": {
+                            "listChanged": False
+                        }
+                    },
                 ),
             )

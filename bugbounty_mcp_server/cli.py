@@ -49,7 +49,10 @@ def serve(ctx):
     except KeyboardInterrupt:
         click.echo("\nServer stopped by user.")
     except Exception as e:
+        import traceback
         click.echo(f"Error starting server: {e}", err=True)
+        click.echo(f"Full traceback:", err=True)
+        click.echo(traceback.format_exc(), err=True)
         raise click.Abort()
 
 
