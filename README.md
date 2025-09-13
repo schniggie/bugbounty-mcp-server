@@ -121,7 +121,93 @@ A comprehensive Model Context Protocol (MCP) server for bug bounty hunting and w
 
 - **Python 3.10 or higher** (Python 3.11+ recommended)
 - **Git**
+- **Docker** (for containerized deployment)
 - **macOS, Linux, or Windows with WSL**
+
+## 🐳 Docker Installation (Recommended)
+
+The easiest way to get started is using Docker, which includes all dependencies and security tools pre-installed.
+
+### Quick Docker Start
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/bugbounty-mcp-server.git
+   cd bugbounty-mcp-server
+   ```
+
+2. **Configure API keys (optional but recommended):**
+   ```bash
+   # Copy environment template
+   cp env.example .env
+   
+   # Edit .env with your API keys
+   nano .env
+   ```
+
+3. **Build and run with Docker Compose:**
+   ```bash
+   # Build and start the container
+   docker-compose up --build -d
+   
+   # View logs
+   docker-compose logs -f bugbounty-mcp
+   
+   # Stop the container
+   docker-compose down
+   ```
+
+### Manual Docker Commands
+
+```bash
+# Build the Docker image
+docker build -t bugbounty-mcp:latest .
+
+# Run the container
+docker run -d \
+  --name bugbounty-mcp-server \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/.env:/app/.env:ro \
+  bugbounty-mcp:latest
+
+# View logs
+docker logs -f bugbounty-mcp-server
+
+# Access container shell for debugging
+docker exec -it bugbounty-mcp-server /bin/bash
+
+# Stop and remove container
+docker stop bugbounty-mcp-server
+docker rm bugbounty-mcp-server
+```
+
+### Docker Environment Variables
+
+You can pass API keys and configuration directly to Docker:
+
+```bash
+docker run -d \
+  --name bugbounty-mcp-server \
+  -e SHODAN_API_KEY="your_shodan_key" \
+  -e VIRUSTOTAL_API_KEY="your_vt_key" \
+  -e GITHUB_TOKEN="your_github_token" \
+  -e LOG_LEVEL="INFO" \
+  -v $(pwd)/output:/app/output \
+  bugbounty-mcp:latest
+```
+
+### What's Included in Docker Image
+
+The Docker image includes:
+- ✅ Python 3.11 with all required packages
+- ✅ All 20+ security tools (nmap, nuclei, subfinder, httpx, etc.)
+- ✅ Essential wordlists for scanning
+- ✅ Optimized for security and performance
+- ✅ Non-root user for enhanced security
+- ✅ Health checks and monitoring
+
+## 🔧 Native Installation
 
 ### Quick Start
 
@@ -196,9 +282,39 @@ A comprehensive Model Context Protocol (MCP) server for bug bounty hunting and w
 
 ### Starting the MCP Server
 
-#### 🚀 Quick Start with run.sh
+#### � Docker Usage (Recommended)
 
-The easiest way to start the server is using the provided `run.sh` script:
+**Using Docker Compose (easiest):**
+```bash
+# Start the server
+docker-compose up -d
+
+# View logs in real-time
+docker-compose logs -f bugbounty-mcp
+
+# Stop the server
+docker-compose down
+```
+
+**Using Docker directly:**
+```bash
+# Start the server
+docker run -d \
+  --name bugbounty-mcp \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/.env:/app/.env:ro \
+  bugbounty-mcp:latest
+
+# Check server status
+docker exec bugbounty-mcp bugbounty-mcp validate-config
+
+# View available tools
+docker exec bugbounty-mcp bugbounty-mcp list-tools
+```
+
+#### 🚀 Native Usage with run.sh
+
+The easiest way to start the server natively is using the provided `run.sh` script:
 
 ```bash
 # Navigate to the project directory
@@ -253,6 +369,22 @@ Add to your Claude Desktop configuration file:
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+**For Docker (recommended):**
+```json
+{
+  "mcpServers": {
+    "bugbounty-mcp": {
+      "command": "docker",
+      "args": ["exec", "-i", "bugbounty-mcp-server", "bugbounty-mcp", "serve"],
+      "env": {
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+      }
+    }
+  }
+}
+```
+
+**For Native Installation:**
 ```json
 {
   "mcpServers": {
@@ -324,6 +456,33 @@ LLM: I'll help you conduct a comprehensive security assessment using the BugBoun
 
 **If the server doesn't start in Claude Desktop:**
 
+**For Docker deployment:**
+
+1. **Ensure Docker container is running:**
+   ```bash
+   docker ps | grep bugbounty-mcp
+   # Should show running container
+   ```
+
+2. **Check container logs:**
+   ```bash
+   docker logs bugbounty-mcp-server
+   ```
+
+3. **Test Docker integration:**
+   ```bash
+   docker exec bugbounty-mcp-server bugbounty-mcp --help
+   # Should show help output
+   ```
+
+4. **Verify Docker socket access (macOS/Linux):**
+   ```bash
+   ls -la /var/run/docker.sock
+   # Should be accessible
+   ```
+
+**For Native deployment:**
+
 1. **Check the path in your config:**
    ```bash
    # Get the absolute path
@@ -345,6 +504,84 @@ LLM: I'll help you conduct a comprehensive security assessment using the BugBoun
 4. **Check Claude Desktop logs:**
    - **macOS**: `~/Library/Logs/Claude/`
    - **Windows**: `%LOCALAPPDATA%\Claude\logs\`
+
+### 🐳 Docker Advanced Usage
+
+#### Development with Docker
+
+```bash
+# Build development image with debugging tools
+docker build -t bugbounty-mcp:dev --target builder .
+
+# Run with volume mounts for live development
+docker run -it --rm \
+  -v $(pwd):/app \
+  -v $(pwd)/output:/app/output \
+  bugbounty-mcp:dev bash
+
+# Run specific tools
+docker exec bugbounty-mcp nmap --version
+docker exec bugbounty-mcp nuclei -version
+docker exec bugbounty-mcp subfinder -version
+```
+
+#### Performance Tuning
+
+```bash
+# Run with increased resources
+docker run -d \
+  --name bugbounty-mcp \
+  --cpus="2.0" \
+  --memory="4g" \
+  -v $(pwd)/output:/app/output \
+  bugbounty-mcp:latest
+
+# Monitor resource usage
+docker stats bugbounty-mcp
+```
+
+#### Backup and Persistence
+
+```bash
+# Create data volume backup
+docker run --rm \
+  -v bugbounty-data:/data \
+  -v $(pwd)/backup:/backup \
+  alpine tar czf /backup/data-backup-$(date +%Y%m%d).tar.gz -C /data .
+
+# Restore data volume
+docker run --rm \
+  -v bugbounty-data:/data \
+  -v $(pwd)/backup:/backup \
+  alpine tar xzf /backup/data-backup-XXXXXXXX.tar.gz -C /data
+```
+
+#### Docker Management Script
+
+For easier Docker management, use the included `docker.sh` script:
+
+```bash
+# Make executable (first time only)
+chmod +x docker.sh
+
+# Build and run in one command
+./docker.sh build && ./docker.sh run --api-keys
+
+# Quick operations
+./docker.sh logs --follow     # View live logs
+./docker.sh shell            # Access container shell
+./docker.sh validate         # Validate setup
+./docker.sh restart --force  # Force restart
+./docker.sh clean --force    # Clean everything
+
+# Data management
+./docker.sh backup           # Backup container data
+./docker.sh restore backup/file.tar.gz  # Restore data
+
+# Development
+./docker.sh build --dev      # Build dev image
+./docker.sh run --dev        # Run with source mounting
+```
 
 ### Example Configuration
 

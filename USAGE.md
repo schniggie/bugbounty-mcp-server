@@ -17,6 +17,31 @@ This guide provides detailed examples of how to use the BugBounty MCP Server for
 
 ### First Run
 
+#### Docker Method (Recommended)
+
+The easiest way to get started is with Docker:
+
+```bash
+# Navigate to the project directory
+cd bugbounty-mcp-server
+
+# Build and run with Docker Compose
+docker-compose up --build -d
+
+# Or use the Docker management script
+chmod +x docker.sh
+./docker.sh build
+./docker.sh run --api-keys
+
+# Validate setup
+./docker.sh validate
+
+# View logs
+./docker.sh logs --follow
+```
+
+#### Native Method
+
 After installation, validate your setup using the convenient `run.sh` script:
 
 ```bash
