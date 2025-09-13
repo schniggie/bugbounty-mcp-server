@@ -39,8 +39,69 @@ check_command() {
     fi
 }
 
+check_python_version() {
+    log_info "Checking Python version..."
+    
+    if ! command -v python3 &> /dev/null; then
+        log_error "Python 3 is not installed"
+        return 1
+    fi
+    
+    local python_version
+    python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    local major_version
+    major_version=$(echo "$python_version" | cut -d. -f1)
+    local minor_version
+    minor_version=$(echo "$python_version" | cut -d. -f2)
+    
+    if [ "$major_version" -eq 3 ] && [ "$minor_version" -ge 10 ]; then
+        log_success "Python $python_version is compatible (>=3.10 required)"
+        return 0
+    else
+        log_error "Python $python_version is not compatible. MCP requires Python 3.10 or higher"
+        log_info "Please upgrade Python:"
+        log_info "  macOS: brew install python@3.11"
+        log_info "  Ubuntu/Debian: sudo apt install python3.11 python3.11-venv"
+        log_info "  CentOS/RHEL: sudo yum install python311 python311-pip"
+        return 1
+    fi
+}
+
+setup_virtual_environment() {
+    log_info "Setting up Python virtual environment..."
+    
+    # Check if venv already exists
+    if [ -d "venv" ]; then
+        log_info "Virtual environment already exists"
+        return 0
+    fi
+    
+    # Create virtual environment
+    if python3 -m venv venv; then
+        log_success "Virtual environment created successfully"
+        
+        # Activate and upgrade pip
+        source venv/bin/activate
+        pip install --upgrade pip
+        
+        log_success "Virtual environment activated and pip upgraded"
+        return 0
+    else
+        log_error "Failed to create virtual environment"
+        return 1
+    fi
+}
+
 install_python_package() {
     log_info "Installing BugBounty MCP Server..."
+    
+    # Ensure virtual environment is activated
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+        log_info "Using virtual environment: $(python --version)"
+    else
+        log_warning "No virtual environment found, using system Python"
+    fi
     
     # Install in development mode if we're in the source directory
     if [ -f "pyproject.toml" ]; then
@@ -88,29 +149,61 @@ install_system_tools() {
             # Debian/Ubuntu
             log_info "Detected Debian/Ubuntu system"
             sudo apt-get update
-            sudo apt-get install -y nmap masscan nikto dirb sqlmap whatweb dnsutils git curl wget
-        elif command -v yum &> /dev/null; then
-            # RHEL/CentOS
-            log_info "Detected RHEL/CentOS system"
-            sudo yum install -y nmap masscan nikto dirb sqlmap git curl wget
+            sudo apt-get install -y nmap masscan nikto dirb sqlmap whatweb dnsutils git curl wget python3-venv python3-pip
+        elif command -v yum &> /dev/null || command -v dnf &> /dev/null; then
+            # RHEL/CentOS/Fedora
+            local package_manager
+            if command -v dnf &> /dev/null; then
+                package_manager="dnf"
+                log_info "Detected Fedora system"
+            else
+                package_manager="yum"
+                log_info "Detected RHEL/CentOS system"
+            fi
+            sudo $package_manager install -y nmap masscan nikto dirb sqlmap git curl wget python3 python3-pip
         elif command -v pacman &> /dev/null; then
             # Arch Linux
             log_info "Detected Arch Linux system"
-            sudo pacman -S nmap masscan nikto dirb sqlmap git curl wget
+            sudo pacman -S --noconfirm nmap masscan nikto dirb sqlmap git curl wget python python-pip
+        elif command -v zypper &> /dev/null; then
+            # openSUSE
+            log_info "Detected openSUSE system"
+            sudo zypper install -y nmap masscan nikto dirb sqlmap git curl wget python3 python3-pip
         else
             log_warning "Unknown Linux distribution. Please install tools manually."
+            log_info "Required tools: nmap, masscan, nikto, dirb, sqlmap, git, curl, wget"
+            return 1
         fi
     elif [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         log_info "Detected macOS system"
         if command -v brew &> /dev/null; then
-            brew install nmap masscan nikto dirb sqlmap git curl wget
+            # Install essential tools (some may not be available)
+            brew install nmap nikto sqlmap git curl wget python@3.11 || log_warning "Some tools may not be available via Homebrew"
+            
+            # Try to install additional tools
+            brew install masscan 2>/dev/null || log_info "masscan not available via Homebrew (install manually if needed)"
+            brew install dirb 2>/dev/null || log_info "dirb not available via Homebrew (install manually if needed)"
         else
             log_error "Homebrew not found. Please install Homebrew first: https://brew.sh/"
+            log_info "Then run: brew install nmap nikto sqlmap git curl wget python@3.11"
             return 1
         fi
+    elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+        # Windows (Git Bash/WSL)
+        log_info "Detected Windows environment"
+        log_warning "Windows support is limited. Please install tools manually:"
+        log_info "1. Install Python 3.11+ from python.org"
+        log_info "2. Install Git from git-scm.com"
+        log_info "3. Install WSL2 for Linux tools (recommended)"
+        log_info "4. Or use Windows ports: nmap, nikto, sqlmap"
+        return 1
     else
         log_warning "Unsupported operating system: $OSTYPE"
+        log_info "Please install the following tools manually:"
+        log_info "- Python 3.10+ with pip and venv"
+        log_info "- Git, curl, wget"
+        log_info "- Security tools: nmap, nikto, sqlmap (optional)"
         return 1
     fi
     
@@ -220,34 +313,136 @@ setup_environment() {
         log_info "Please edit .env file to add your API keys"
     fi
     
-    # Add Go bin to PATH if not already there
-    if [[ ":$PATH:" != *":$HOME/go/bin:"* ]]; then
-        echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-        export PATH=$PATH:$HOME/go/bin
-        log_success "Added Go bin directory to PATH"
+    # Add Go bin to PATH if Go is installed and not already in PATH
+    if command -v go &> /dev/null && [[ ":$PATH:" != *":$HOME/go/bin:"* ]]; then
+        local go_bin_path="$HOME/go/bin"
+        
+        # Detect shell and add to appropriate config file
+        local shell_config=""
+        case "$SHELL" in
+            */zsh)
+                shell_config="$HOME/.zshrc"
+                ;;
+            */bash)
+                shell_config="$HOME/.bashrc"
+                ;;
+            */fish)
+                shell_config="$HOME/.config/fish/config.fish"
+                ;;
+            */tcsh)
+                shell_config="$HOME/.tcshrc"
+                ;;
+            */csh)
+                shell_config="$HOME/.cshrc"
+                ;;
+            *)
+                shell_config="$HOME/.bashrc"
+                ;;
+        esac
+        
+        # Add to shell config
+        if [ -f "$shell_config" ]; then
+            if ! grep -q "export PATH=\$PATH:$go_bin_path" "$shell_config"; then
+                echo "" >> "$shell_config"
+                echo "# Added by BugBounty MCP Server installer" >> "$shell_config"
+                echo "export PATH=\$PATH:$go_bin_path" >> "$shell_config"
+                log_success "Added Go bin directory to PATH in $shell_config"
+            else
+                log_info "Go bin directory already in PATH"
+            fi
+        else
+            log_warning "Shell config file not found: $shell_config"
+            log_info "Please add this to your shell configuration:"
+            log_info "export PATH=\$PATH:$go_bin_path"
+        fi
+        
+        # Add to current session
+        export PATH=$PATH:$go_bin_path
+        log_info "Go tools will be available after restarting your shell"
     fi
 }
 
 verify_installation() {
     log_info "Verifying installation..."
     
+    # Activate virtual environment if available
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+        log_info "Using virtual environment for verification"
+    fi
+    
     # Check if the main command works
     if bugbounty-mcp --help &> /dev/null; then
         log_success "BugBounty MCP Server is working"
     else
         log_error "BugBounty MCP Server installation failed"
+        log_info "Trying to diagnose the issue..."
+        
+        # Check if we're in the right directory
+        if [ ! -f "pyproject.toml" ]; then
+            log_error "Not in the correct directory. Please run from the project root."
+        fi
+        
+        # Check virtual environment
+        if [ -d "venv" ]; then
+            log_info "Virtual environment exists"
+            if [ -f "venv/bin/activate" ]; then
+                log_info "Virtual environment activation script exists"
+            else
+                log_error "Virtual environment activation script missing"
+            fi
+        else
+            log_error "Virtual environment not found"
+        fi
+        
+        # Check Python packages
+        if command -v python &> /dev/null; then
+            log_info "Python version: $(python --version)"
+            log_info "Pip version: $(pip --version)"
+        fi
+        
         return 1
     fi
     
     # Check tool availability
+    log_info "Checking security tools availability..."
     local tools=("nmap" "nuclei" "subfinder" "httpx" "gobuster" "ffuf")
+    local available_tools=()
+    local missing_tools=()
+    
     for tool in "${tools[@]}"; do
-        check_command "$tool"
+        if command -v "$tool" &> /dev/null; then
+            available_tools+=("$tool")
+            log_success "✓ $tool is available"
+        else
+            missing_tools+=("$tool")
+            log_warning "✗ $tool is not available"
+        fi
     done
+    
+    log_info "Available tools: ${available_tools[*]}"
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        log_warning "Missing tools: ${missing_tools[*]}"
+        log_info "You can install them later or use alternative tools"
+    fi
+    
+    # Check wordlists
+    log_info "Checking wordlists..."
+    if [ -d "wordlists" ] && [ "$(ls -A wordlists/*.txt 2>/dev/null | wc -l)" -gt 0 ]; then
+        log_success "Wordlists are available"
+        ls -lh wordlists/*.txt 2>/dev/null | grep -v "total" | head -5
+    else
+        log_warning "No wordlists found"
+        log_info "Run './run.sh download-wordlists' to download them"
+    fi
     
     # Validate configuration
     log_info "Validating configuration..."
-    bugbounty-mcp validate-config || log_warning "Configuration validation failed"
+    if bugbounty-mcp validate-config 2>/dev/null; then
+        log_success "Configuration validation passed"
+    else
+        log_warning "Configuration validation failed (this may be normal for first setup)"
+    fi
     
     log_success "Installation verification completed"
 }
@@ -320,17 +515,56 @@ main() {
     # Check prerequisites
     log_info "Checking prerequisites..."
     
+    # Essential tools
+    local missing_tools=()
+    
+    # Python and pip
     if ! check_command python3; then
-        log_error "Python 3 is required but not installed"
-        exit 1
+        missing_tools+=("python3")
+    else
+        check_python_version || exit 1
     fi
     
     if ! check_command pip; then
-        log_error "pip is required but not installed"
+        missing_tools+=("pip")
+    fi
+    
+    # Git (for cloning and Go tools)
+    if ! check_command git; then
+        missing_tools+=("git")
+    fi
+    
+    # Curl (for downloads)
+    if ! check_command curl; then
+        missing_tools+=("curl")
+    fi
+    
+    # Report missing tools
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        log_error "Missing required tools: ${missing_tools[*]}"
+        log_info "Please install the missing tools and try again:"
+        
+        case "$OSTYPE" in
+            "darwin"*)
+                log_info "macOS: brew install ${missing_tools[*]}"
+                ;;
+            "linux-gnu"*)
+                if command -v apt-get &> /dev/null; then
+                    log_info "Debian/Ubuntu: sudo apt install ${missing_tools[*]}"
+                elif command -v yum &> /dev/null; then
+                    log_info "RHEL/CentOS: sudo yum install ${missing_tools[*]}"
+                elif command -v pacman &> /dev/null; then
+                    log_info "Arch: sudo pacman -S ${missing_tools[*]}"
+                fi
+                ;;
+        esac
         exit 1
     fi
     
+    log_success "All prerequisites satisfied"
+    
     # Install components based on options
+    setup_virtual_environment || exit 1
     install_python_package
     setup_directories
     setup_environment
@@ -352,16 +586,35 @@ main() {
     # Final instructions
     log_success "Installation completed successfully!"
     echo
+    log_info "🎉 BugBounty MCP Server is ready to use!"
+    echo
     log_info "Next steps:"
     echo "1. Edit .env file to add your API keys (optional but recommended)"
-    echo "2. Run 'bugbounty-mcp validate-config' to check your setup"
-    echo "3. Run 'bugbounty-mcp serve' to start the server"
+    echo "2. Test the installation: ./run.sh validate-config"
+    echo "3. Start the server: ./run.sh serve"
     echo "4. Integrate with your LLM client (Claude Desktop, etc.)"
     echo
-    log_info "For usage examples, see USAGE.md"
-    log_info "For security guidelines, see SECURITY.md"
+    log_info "Quick commands:"
+    echo "  ./run.sh serve                    # Start the MCP server"
+    echo "  ./run.sh validate-config          # Check your setup"
+    echo "  ./run.sh download-wordlists       # Download additional wordlists"
+    echo "  ./run.sh --help                   # Show all available commands"
     echo
-    log_warning "Remember: Only use this tool on systems you own or have explicit permission to test!"
+    log_info "Documentation:"
+    echo "  📖 README.md         - Main documentation"
+    echo "  📖 USAGE.md          - Usage examples"
+    echo "  📖 RUN_SCRIPT.md     - Run script guide"
+    echo "  📖 SECURITY.md       - Security guidelines"
+    echo "  📄 env.example       - Environment configuration template"
+    echo
+    log_info "Virtual Environment:"
+    echo "  📁 venv/             - Python virtual environment (created)"
+    echo "  🔧 Auto-activated    - run.sh automatically activates venv"
+    echo
+    log_warning "⚠️  IMPORTANT: Only use this tool on systems you own or have explicit permission to test!"
+    log_warning "⚠️  This tool is for authorized security testing only!"
+    echo
+    log_success "Happy bug hunting! 🐛🔍"
 }
 
 # Run main function
