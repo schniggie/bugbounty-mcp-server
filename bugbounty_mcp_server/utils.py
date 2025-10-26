@@ -91,55 +91,137 @@ class Cache:
 
 
 def validate_target(target: str) -> Dict[str, Any]:
-    """Validate and parse a target (URL, domain, or IP)."""
+    """
+    Validate and parse a target (URL, domain, IP address, or CIDR range).
+    
+    Supports:
+    - URLs: http://example.com, https://api.example.com:8080/path
+    - Domains: example.com, subdomain.example.com
+    - IPv4 addresses: 192.168.1.1
+    - IPv6 addresses: ::1, 2001:db8::1
+    - CIDR ranges: 192.168.1.0/24, 2001:db8::/32
+    - Domain:port: example.com:8080
+    
+    Returns:
+        Dict with keys: valid, type, original, parsed, domain, host, port, 
+        scheme, path, ip, network, ip_range, error
+    """
     result = {
         "valid": False,
         "type": None,
         "original": target,
         "parsed": None,
         "domain": None,
+        "host": None,
         "ip": None,
         "port": None,
-        "scheme": None
+        "scheme": None,
+        "path": None,
+        "network": None,
+        "ip_range": None,
+        "error": None
     }
     
+    if not target or not isinstance(target, str):
+        result["error"] = "Target must be a non-empty string"
+        return result
+    
+    target = target.strip()
+    
     try:
-        # Try to parse as URL first
+        # Step 1: Try to parse as URL (must have scheme)
         if "://" in target:
             parsed = urlparse(target)
-            if parsed.netloc:
+            if parsed.scheme and parsed.netloc:
                 result["valid"] = True
                 result["type"] = "url"
                 result["parsed"] = parsed
-                result["domain"] = parsed.hostname
-                result["port"] = parsed.port
                 result["scheme"] = parsed.scheme
+                result["domain"] = parsed.hostname
+                result["host"] = parsed.hostname
+                result["path"] = parsed.path if parsed.path else None
                 
-                # Try to resolve IP
-                try:
-                    result["ip"] = socket.gethostbyname(parsed.hostname)
-                except:
-                    pass
+                # Set port (use explicit port or defaults)
+                if parsed.port:
+                    result["port"] = parsed.port
+                else:
+                    result["port"] = 443 if parsed.scheme == "https" else 80
+                
+                # Try to resolve IP (optional, non-blocking if fails)
+                if parsed.hostname:
+                    try:
+                        result["ip"] = socket.gethostbyname(parsed.hostname)
+                    except:
+                        pass
                 
                 return result
+            else:
+                result["error"] = "Invalid URL format: missing scheme or netloc"
+                return result
         
-        # Try to parse as IP address
+        # Step 2: Try to parse as CIDR range
+        if "/" in target:
+            try:
+                network = ipaddress.ip_network(target, strict=False)
+                result["valid"] = True
+                result["type"] = "cidr"
+                result["network"] = network
+                result["ip_range"] = f"{network.network_address} - {network.broadcast_address}"
+                result["host"] = str(network.network_address)
+                return result
+            except ValueError as e:
+                result["error"] = f"Invalid CIDR range: {str(e)}"
+                return result
+        
+        # Step 3: Try to parse as IP address (IPv4 or IPv6)
         try:
             ip_obj = ipaddress.ip_address(target)
             result["valid"] = True
-            result["type"] = "ip"
+            result["type"] = "ipv4" if ip_obj.version == 4 else "ipv6"
             result["ip"] = str(ip_obj)
+            result["host"] = str(ip_obj)
             return result
         except ValueError:
             pass
         
-        # Try to parse as domain
+        # Step 4: Try to parse as domain:port
+        if ":" in target and not target.startswith("["):
+            # Avoid treating IPv6 addresses as domain:port
+            # Simple heuristic: if there's more than one colon, it's likely IPv6
+            if target.count(":") == 1:
+                parts = target.rsplit(":", 1)
+                if len(parts) == 2:
+                    potential_domain, port_str = parts
+                    try:
+                        port = int(port_str)
+                        if 1 <= port <= 65535:
+                            # Validate the domain part
+                            if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$', potential_domain):
+                                result["valid"] = True
+                                result["type"] = "domain"
+                                result["domain"] = potential_domain
+                                result["host"] = potential_domain
+                                result["port"] = port
+                                
+                                # Try to resolve IP
+                                try:
+                                    result["ip"] = socket.gethostbyname(potential_domain)
+                                except:
+                                    pass
+                                
+                                return result
+                    except ValueError:
+                        pass
+        
+        # Step 5: Try to parse as plain domain
+        # Domain validation regex: alphanumeric, hyphens, dots
         if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$', target):
             result["valid"] = True
             result["type"] = "domain"
             result["domain"] = target
+            result["host"] = target
             
-            # Try to resolve IP
+            # Try to resolve IP (optional)
             try:
                 result["ip"] = socket.gethostbyname(target)
             except:
@@ -147,34 +229,13 @@ def validate_target(target: str) -> Dict[str, Any]:
             
             return result
         
-        # Try to parse as domain:port
-        if ":" in target and not target.startswith("["):
-            parts = target.rsplit(":", 1)
-            if len(parts) == 2:
-                domain, port_str = parts
-                try:
-                    port = int(port_str)
-                    if 1 <= port <= 65535:
-                        if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$', domain):
-                            result["valid"] = True
-                            result["type"] = "domain_port"
-                            result["domain"] = domain
-                            result["port"] = port
-                            
-                            # Try to resolve IP
-                            try:
-                                result["ip"] = socket.gethostbyname(domain)
-                            except:
-                                pass
-                            
-                            return result
-                except ValueError:
-                    pass
+        # If we get here, target is invalid
+        result["error"] = "Invalid target format: must be URL, domain, IP address, or CIDR range"
+        return result
     
-    except Exception:
-        pass
-    
-    return result
+    except Exception as e:
+        result["error"] = f"Unexpected error during validation: {str(e)}"
+        return result
 
 
 async def resolve_domain(domain: str) -> Dict[str, List[str]]:
