@@ -692,9 +692,112 @@ class WebApplicationTools(BaseTools):
     
     async def _deep_sensitivity_scan(self, session: aiohttp.ClientSession, url: str, results: Dict[str, Any]) -> None:
         """Perform deep sensitivity scanning."""
-        # This would implement more comprehensive scanning
-        # For now, placeholder implementation
-        pass
+        sensitive_findings = []
+        
+        # Common sensitive file paths to check
+        sensitive_paths = [
+            "/.env", "/.git/config", "/config.php", "/wp-config.php",
+            "/.aws/credentials", "/.ssh/id_rsa", "/database.yml",
+            "/config/database.yml", "/backup.sql", "/dump.sql",
+            "/.env.local", "/.env.production", "/settings.py",
+            "/config.json", "/secrets.json", "/.htpasswd"
+        ]
+        
+        from urllib.parse import urljoin
+        
+        # Check for exposed sensitive files
+        for path in sensitive_paths:
+            try:
+                check_url = urljoin(url, path)
+                async with session.get(check_url, timeout=5, allow_redirects=False) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        if len(content) > 0:
+                            sensitive_findings.append({
+                                "type": "Exposed Sensitive File",
+                                "severity": "high",
+                                "url": check_url,
+                                "details": f"Sensitive file accessible: {path}",
+                                "content_length": len(content)
+                            })
+            except Exception:
+                pass
+        
+        # Scan the main page for sensitive patterns
+        try:
+            async with session.get(url, timeout=10) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    
+                    # Check for API keys and secrets
+                    api_key_patterns = [
+                        (r'AKIA[0-9A-Z]{16}', "AWS Access Key"),
+                        (r'sk_live_[0-9a-zA-Z]{24,}', "Stripe Live Key"),
+                        (r'AIza[0-9A-Za-z\\-_]{35}', "Google API Key"),
+                        (r'ghp_[0-9a-zA-Z]{36}', "GitHub Personal Access Token"),
+                        (r'sk-[0-9a-zA-Z]{48}', "OpenAI API Key"),
+                    ]
+                    
+                    for pattern, key_type in api_key_patterns:
+                        matches = re.findall(pattern, content)
+                        if matches:
+                            for match in matches[:3]:  # Limit to first 3
+                                sensitive_findings.append({
+                                    "type": "Exposed API Key",
+                                    "severity": "critical",
+                                    "url": url,
+                                    "details": f"{key_type} found in page content",
+                                    "evidence": f"{match[:10]}..."
+                                })
+                    
+                    # Check for private keys
+                    if "BEGIN RSA PRIVATE KEY" in content or "BEGIN PRIVATE KEY" in content:
+                        sensitive_findings.append({
+                            "type": "Exposed Private Key",
+                            "severity": "critical",
+                            "url": url,
+                            "details": "RSA/SSH private key found in page content"
+                        })
+                    
+                    # Check for JWT tokens
+                    jwt_pattern = r'eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*'
+                    jwt_matches = re.findall(jwt_pattern, content)
+                    if jwt_matches:
+                        sensitive_findings.append({
+                            "type": "Exposed JWT Token",
+                            "severity": "high",
+                            "url": url,
+                            "details": f"Found {len(jwt_matches)} JWT token(s) in page content",
+                            "evidence": f"{jwt_matches[0][:30]}..."
+                        })
+                    
+                    # Check for database connection strings
+                    db_patterns = [
+                        r'mongodb(\+srv)?://[^\s<>"]+',
+                        r'postgres://[^\s<>"]+',
+                        r'mysql://[^\s<>"]+',
+                        r'Server=.+?;Database=.+?;.*Password=.+?;'
+                    ]
+                    
+                    for pattern in db_patterns:
+                        matches = re.findall(pattern, content, re.IGNORECASE)
+                        if matches:
+                            sensitive_findings.append({
+                                "type": "Exposed Database Connection String",
+                                "severity": "critical",
+                                "url": url,
+                                "details": "Database connection string found in content",
+                                "evidence": matches[0][:50] + "..."
+                            })
+        
+        except Exception:
+            pass
+        
+        # Add findings to results
+        if sensitive_findings:
+            if "sensitive_data" not in results:
+                results["sensitive_data"] = []
+            results["sensitive_data"].extend(sensitive_findings)
     
     async def _test_api_rate_limiting(self, session: aiohttp.ClientSession, api_url: str, headers: Dict[str, str]) -> Dict[str, Any]:
         """Test API rate limiting."""
@@ -760,8 +863,128 @@ class WebApplicationTools(BaseTools):
         
         return auth_tests
     
-    async def _perform_login(self, session: aiohttp.ClientSession, url: str, credentials: Dict[str, str]) -> None:
+    async def _perform_login(self, session: aiohttp.ClientSession, url: str, credentials: Dict[str, str]) -> Dict[str, Any]:
         """Perform login to get session cookies."""
-        # This would implement login functionality
-        # For now, placeholder implementation
-        pass
+        login_result = {
+            "success": False,
+            "method": None,
+            "cookies": {},
+            "session_token": None,
+            "error": None
+        }
+        
+        try:
+            # Fetch the login page
+            async with session.get(url, timeout=10) as response:
+                if response.status != 200:
+                    login_result["error"] = f"Failed to load login page: HTTP {response.status}"
+                    return login_result
+                
+                html = await response.text()
+            
+            # Parse HTML to find login form
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Find login form (look for common patterns)
+            login_form = None
+            for form in soup.find_all('form'):
+                # Check if form has password field
+                password_field = form.find('input', {'type': 'password'})
+                if password_field:
+                    login_form = form
+                    break
+            
+            if not login_form:
+                login_result["error"] = "No login form found on page"
+                return login_result
+            
+            # Extract form action URL
+            form_action = login_form.get('action', '')
+            if form_action:
+                from urllib.parse import urljoin
+                form_url = urljoin(url, form_action)
+            else:
+                form_url = url
+            
+            # Extract form method
+            form_method = login_form.get('method', 'post').lower()
+            
+            # Build form data
+            form_data = {}
+            
+            # Find all input fields in the form
+            for input_field in login_form.find_all('input'):
+                field_name = input_field.get('name')
+                field_type = input_field.get('type', 'text').lower()
+                field_value = input_field.get('value', '')
+                
+                if field_name:
+                    # Handle different field types
+                    if field_type == 'password':
+                        form_data[field_name] = credentials.get('password', '')
+                    elif field_type in ['text', 'email'] and not field_value:
+                        # Try to match common username field names
+                        if any(keyword in field_name.lower() for keyword in ['user', 'email', 'login', 'account']):
+                            form_data[field_name] = credentials.get('username', credentials.get('email', ''))
+                    elif field_type == 'hidden':
+                        # Include hidden fields (like CSRF tokens)
+                        form_data[field_name] = field_value
+                    elif field_type == 'submit':
+                        # Include submit button if it has a value
+                        if field_value:
+                            form_data[field_name] = field_value
+            
+            # Also check for common field names if not found
+            if not any(k for k in form_data.keys() if 'password' in k.lower()):
+                # Add password with common field names
+                for common_pass in ['password', 'pass', 'pwd']:
+                    if common_pass in [inp.get('name', '') for inp in login_form.find_all('input')]:
+                        form_data[common_pass] = credentials.get('password', '')
+                        break
+            
+            if not form_data:
+                login_result["error"] = "Could not build form data from login form"
+                return login_result
+            
+            # Submit login form
+            if form_method == 'get':
+                async with session.get(form_url, params=form_data, timeout=10, allow_redirects=True) as response:
+                    login_response = response
+            else:  # POST
+                async with session.post(form_url, data=form_data, timeout=10, allow_redirects=True) as response:
+                    login_response = response
+            
+            # Check if login was successful
+            response_text = await login_response.text()
+            
+            # Look for success indicators
+            success_indicators = ['dashboard', 'welcome', 'logout', 'profile', 'account']
+            failure_indicators = ['invalid', 'incorrect', 'failed', 'error', 'wrong']
+            
+            response_lower = response_text.lower()
+            has_success = any(indicator in response_lower for indicator in success_indicators)
+            has_failure = any(indicator in response_lower for indicator in failure_indicators)
+            
+            # Check cookies
+            cookies = {cookie.key: cookie.value for cookie in session.cookie_jar}
+            has_session_cookie = any('session' in key.lower() or 'token' in key.lower() for key in cookies.keys())
+            
+            # Determine success
+            if (has_success and not has_failure) or has_session_cookie or (login_response.status == 200 and login_response.url != url):
+                login_result["success"] = True
+                login_result["method"] = "form_based"
+                login_result["cookies"] = cookies
+                
+                # Try to extract session token from cookies
+                for key, value in cookies.items():
+                    if 'session' in key.lower() or 'token' in key.lower():
+                        login_result["session_token"] = value
+                        break
+            else:
+                login_result["error"] = "Login appears to have failed (no success indicators found)"
+        
+        except Exception as e:
+            login_result["error"] = f"Exception during login: {str(e)}"
+        
+        return login_result
