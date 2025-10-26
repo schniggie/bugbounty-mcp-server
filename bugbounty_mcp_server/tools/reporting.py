@@ -648,18 +648,353 @@ class ReportingTools(BaseTools):
     
     async def _save_csv_report(self, results: Dict[str, Any], filepath: str) -> None:
         """Save report as CSV."""
-        # Implementation for CSV export
-        pass
+        # Flatten findings into CSV rows
+        rows = []
+        
+        findings = results.get("findings", {})
+        for category, items in findings.items():
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        row = {
+                            "Category": category,
+                            "Severity": item.get("severity", "unknown"),
+                            "Title": item.get("title", item.get("type", "N/A")),
+                            "Description": item.get("description", "N/A"),
+                            "Target": item.get("url", item.get("target", "N/A")),
+                            "Evidence": str(item.get("evidence", item.get("details", "N/A")))[:200],
+                            "Timestamp": results.get("scan_metadata", {}).get("timestamp", "N/A")
+                        }
+                        rows.append(row)
+        
+        # If no structured findings, try to extract from other formats
+        if not rows:
+            summary = results.get("summary", {})
+            for key, value in summary.items():
+                if isinstance(value, (list, dict)) and value:
+                    row = {
+                        "Category": key,
+                        "Severity": "info",
+                        "Title": key,
+                        "Description": str(value)[:500],
+                        "Target": results.get("target", "N/A"),
+                        "Evidence": "",
+                        "Timestamp": results.get("timestamp", "N/A")
+                    }
+                    rows.append(row)
+        
+        # Write CSV file
+        if rows:
+            fieldnames = ["Category", "Severity", "Title", "Description", "Target", "Evidence", "Timestamp"]
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+        else:
+            # Write empty CSV with headers if no data
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Category", "Severity", "Title", "Description", "Target", "Evidence", "Timestamp"])
+                writer.writerow(["No findings", "info", "Scan completed", "No vulnerabilities found", "", "", results.get("timestamp", "N/A")])
     
     async def _save_html_report(self, results: Dict[str, Any], filepath: str) -> None:
         """Save report as HTML."""
-        # Implementation for HTML export
-        pass
+        # Extract data from results
+        target = results.get("target", "Unknown Target")
+        timestamp = results.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        findings = results.get("findings", {})
+        summary = results.get("summary", {})
+        
+        # Count findings by severity
+        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+        all_findings = []
+        
+        for category, items in findings.items():
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        severity = item.get("severity", "info").lower()
+                        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                        all_findings.append({
+                            "category": category,
+                            "severity": severity,
+                            **item
+                        })
+        
+        # Sort findings by severity
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+        all_findings.sort(key=lambda x: severity_order.get(x.get("severity", "info"), 4))
+        
+        # Generate HTML
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Assessment Report - {target}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: #f5f7fa; color: #2d3748; line-height: 1.6; }}
+        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
+        header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 20px; border-radius: 10px; margin-bottom: 30px; }}
+        h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
+        .meta {{ opacity: 0.9; font-size: 0.9em; }}
+        .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+        .stat-card {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }}
+        .stat-value {{ font-size: 2.5em; font-weight: bold; margin-bottom: 5px; }}
+        .stat-label {{ color: #718096; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }}
+        .critical {{ color: #e53e3e; }}
+        .high {{ color: #dd6b20; }}
+        .medium {{ color: #d69e2e; }}
+        .low {{ color: #38a169; }}
+        .info {{ color: #3182ce; }}
+        .finding {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #e2e8f0; }}
+        .finding.critical {{ border-left-color: #e53e3e; }}
+        .finding.high {{ border-left-color: #dd6b20; }}
+        .finding.medium {{ border-left-color: #d69e2e; }}
+        .finding.low {{ border-left-color: #38a169; }}
+        .finding.info {{ border-left-color: #3182ce; }}
+        .finding-header {{ display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px; }}
+        .finding-title {{ font-size: 1.3em; font-weight: 600; flex: 1; }}
+        .badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .badge.critical {{ background: #fff5f5; color: #e53e3e; }}
+        .badge.high {{ background: #fffaf0; color: #dd6b20; }}
+        .badge.medium {{ background: #fffff0; color: #d69e2e; }}
+        .badge.low {{ background: #f0fff4; color: #38a169; }}
+        .badge.info {{ background: #ebf8ff; color: #3182ce; }}
+        .finding-meta {{ font-size: 0.85em; color: #718096; margin-bottom: 10px; }}
+        .finding-description {{ margin: 15px 0; padding: 15px; background: #f7fafc; border-radius: 4px; }}
+        .finding-evidence {{ margin-top: 10px; padding: 10px; background: #edf2f7; border-radius: 4px; font-size: 0.9em; }}
+        .section-title {{ font-size: 1.8em; font-weight: 600; margin: 30px 0 15px 0; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }}
+        .no-findings {{ text-align: center; padding: 40px; color: #718096; }}
+        footer {{ text-align: center; padding: 20px; color: #a0aec0; font-size: 0.9em; margin-top: 40px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 Security Assessment Report</h1>
+            <div class="meta">
+                <div><strong>Target:</strong> {target}</div>
+                <div><strong>Scan Date:</strong> {timestamp}</div>
+            </div>
+        </header>
+        
+        <h2 class="section-title">📊 Executive Summary</h2>
+        <div class="dashboard">
+            <div class="stat-card">
+                <div class="stat-value critical">{severity_counts.get('critical', 0)}</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value high">{severity_counts.get('high', 0)}</div>
+                <div class="stat-label">High</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value medium">{severity_counts.get('medium', 0)}</div>
+                <div class="stat-label">Medium</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value low">{severity_counts.get('low', 0)}</div>
+                <div class="stat-label">Low</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value info">{severity_counts.get('info', 0)}</div>
+                <div class="stat-label">Info</div>
+            </div>
+        </div>
+        
+        <h2 class="section-title">🔍 Findings</h2>
+"""
+        
+        if all_findings:
+            for finding in all_findings:
+                severity = finding.get('severity', 'info')
+                title = finding.get('title', finding.get('type', 'Unknown Finding'))
+                category = finding.get('category', 'General')
+                description = finding.get('description', 'No description available')
+                url = finding.get('url', finding.get('target', ''))
+                evidence = finding.get('evidence', finding.get('details', ''))
+                
+                html += f"""
+        <div class="finding {severity}">
+            <div class="finding-header">
+                <div class="finding-title">{title}</div>
+                <span class="badge {severity}">{severity.upper()}</span>
+            </div>
+            <div class="finding-meta">
+                <strong>Category:</strong> {category}
+                {f' | <strong>URL:</strong> {url}' if url else ''}
+            </div>
+            <div class="finding-description">{description}</div>
+            {f'<div class="finding-evidence"><strong>Evidence:</strong> {str(evidence)[:500]}</div>' if evidence else ''}
+        </div>
+"""
+        else:
+            html += """
+        <div class="no-findings">
+            <h3>✅ No vulnerabilities found</h3>
+            <p>The scan completed successfully without detecting any security issues.</p>
+        </div>
+"""
+        
+        html += """
+        <footer>
+            <p>Generated by BugBounty MCP Server | Keep your applications secure 🛡️</p>
+        </footer>
+    </div>
+</body>
+</html>
+"""
+        
+        # Write HTML file
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html)
     
     async def _save_pdf_report(self, results: Dict[str, Any], filepath: str) -> None:
         """Save report as PDF."""
-        # Implementation for PDF export
-        pass
+        try:
+            from reportlab.lib.pagesizes import letter, A4
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.lib import colors
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+        except ImportError:
+            # If reportlab is not available, create a simple text-based PDF alternative
+            with open(filepath.replace('.pdf', '.txt'), 'w', encoding='utf-8') as f:
+                f.write("Security Assessment Report\n")
+                f.write("=" * 50 + "\n\n")
+                f.write(f"Target: {results.get('target', 'Unknown')}\n")
+                f.write(f"Timestamp: {results.get('timestamp', 'N/A')}\n\n")
+                f.write(json.dumps(results, indent=2))
+            return
+        
+        # Create PDF document
+        doc = SimpleDocTemplate(filepath, pagesize=letter)
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#4A5568'),
+            spaceAfter=30,
+            alignment=TA_CENTER
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=16,
+            textColor=colors.HexColor('#2D3748'),
+            spaceAfter=12,
+            spaceBefore=12
+        )
+        
+        # Extract data
+        target = results.get("target", "Unknown Target")
+        timestamp = results.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        findings = results.get("findings", {})
+        
+        # Title Page
+        story.append(Paragraph("🔒 Security Assessment Report", title_style))
+        story.append(Spacer(1, 0.5*inch))
+        
+        # Metadata
+        meta_data = [
+            ["Target:", target],
+            ["Scan Date:", timestamp],
+            ["Report Generated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+        ]
+        meta_table = Table(meta_data, colWidths=[2*inch, 4*inch])
+        meta_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#4A5568')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(meta_table)
+        story.append(Spacer(1, 0.5*inch))
+        
+        # Count findings by severity
+        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+        all_findings = []
+        
+        for category, items in findings.items():
+            if isinstance(items, list):
+                for item in items:
+                    if isinstance(item, dict):
+                        severity = item.get("severity", "info").lower()
+                        severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                        all_findings.append({
+                            "category": category,
+                            "severity": severity,
+                            **item
+                        })
+        
+        # Executive Summary
+        story.append(Paragraph("Executive Summary", heading_style))
+        summary_data = [
+            ["Severity", "Count"],
+            ["Critical", str(severity_counts.get('critical', 0))],
+            ["High", str(severity_counts.get('high', 0))],
+            ["Medium", str(severity_counts.get('medium', 0))],
+            ["Low", str(severity_counts.get('low', 0))],
+            ["Informational", str(severity_counts.get('info', 0))],
+        ]
+        summary_table = Table(summary_data, colWidths=[2*inch, 1*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A5568')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F7FAFC')])
+        ]))
+        story.append(summary_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Findings
+        if all_findings:
+            story.append(PageBreak())
+            story.append(Paragraph("Detailed Findings", heading_style))
+            story.append(Spacer(1, 0.2*inch))
+            
+            # Sort findings by severity
+            severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+            all_findings.sort(key=lambda x: severity_order.get(x.get("severity", "info"), 4))
+            
+            for idx, finding in enumerate(all_findings, 1):
+                severity = finding.get('severity', 'info').upper()
+                title = finding.get('title', finding.get('type', 'Unknown Finding'))
+                category = finding.get('category', 'General')
+                description = finding.get('description', 'No description available')
+                url = finding.get('url', finding.get('target', ''))
+                
+                # Finding header
+                finding_title = f"{idx}. {title} [{severity}]"
+                story.append(Paragraph(finding_title, styles['Heading3']))
+                
+                # Finding details
+                details_text = f"<b>Category:</b> {category}<br/>"
+                if url:
+                    details_text += f"<b>URL:</b> {url}<br/>"
+                details_text += f"<br/><b>Description:</b><br/>{description}"
+                
+                story.append(Paragraph(details_text, styles['BodyText']))
+                story.append(Spacer(1, 0.2*inch))
+        else:
+            story.append(Paragraph("No vulnerabilities were found during the scan.", styles['BodyText']))
+        
+        # Build PDF
+        doc.build(story)
     
     def _analyze_scan_data(self, scan_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze scan data for summary generation."""
