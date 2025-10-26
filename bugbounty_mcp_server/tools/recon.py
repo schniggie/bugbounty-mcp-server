@@ -830,38 +830,84 @@ class ReconTools(BaseTools):
             url = f"https://crt.sh/?q=%.{domain}&output=json"
             async with aiohttp.ClientSession() as session:
                 await self.rate_limit()
-                async with session.get(url) as response:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as response:
                     if response.status == 200:
                         data = await response.json()
                         for cert in data:
                             if "name_value" in cert:
                                 names = cert["name_value"].split("\n")
                                 for name in names:
-                                    if name.endswith(f".{domain}") or name == domain:
+                                    name = name.strip()
+                                    # Remove wildcard prefix
+                                    if name.startswith('*.'):
+                                        name = name[2:]
+                                    
+                                    # Validate it's a subdomain or the domain itself
+                                    if name and (name.endswith(f".{domain}") or name == domain):
                                         subdomains.add(name.lower())
-        except Exception:
-            pass
+        except aiohttp.ClientError as e:
+            self.logger.warning(f"CT log API request failed: {e}")
+        except asyncio.TimeoutError:
+            self.logger.warning(f"CT log search timed out for {domain}")
+        except json.JSONDecodeError:
+            self.logger.error(f"Invalid JSON response from crt.sh for {domain}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in CT search: {e}")
         
         return subdomains
     
     async def _dns_passive_enum(self, domain: str) -> Set[str]:
-        """Passive DNS enumeration."""
+        """Passive DNS enumeration with common subdomain checking."""
         subdomains = set()
         
         # Common subdomains to check
         common_subs = [
             "www", "mail", "ftp", "admin", "test", "dev", "staging", "api", 
             "blog", "shop", "store", "support", "help", "docs", "cdn",
-            "img", "images", "static", "assets", "m", "mobile", "app"
+            "img", "images", "static", "assets", "m", "mobile", "app",
+            "portal", "vpn", "remote", "secure", "cloud", "app1", "app2",
+            "beta", "demo", "old", "new", "backup", "git", "svn"
         ]
         
-        for sub in common_subs:
+        # Use asyncio.gather for parallel DNS resolution
+        async def check_subdomain(sub: str) -> Optional[str]:
+            """Check if a subdomain resolves."""
+            full_domain = f"{sub}.{domain}"
             try:
-                full_domain = f"{sub}.{domain}"
-                socket.gethostbyname(full_domain)
-                subdomains.add(full_domain)
-            except:
-                pass
+                # Run DNS resolution in executor to avoid blocking
+                await asyncio.get_event_loop().run_in_executor(
+                    None, socket.gethostbyname, full_domain
+                )
+                return full_domain
+            except socket.gaierror:
+                # Subdomain doesn't resolve
+                return None
+            except Exception as e:
+                self.logger.debug(f"Error checking {full_domain}: {e}")
+                return None
+        
+        # Check all subdomains in parallel with rate limiting
+        tasks = []
+        for sub in common_subs:
+            await self.rate_limit()  # Respect rate limits
+            tasks.append(check_subdomain(sub))
+        
+        try:
+            # Execute with timeout to prevent hanging
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=30.0  # 30 second total timeout
+            )
+            
+            # Collect successful resolutions
+            for result in results:
+                if result and isinstance(result, str):
+                    subdomains.add(result)
+                    
+        except asyncio.TimeoutError:
+            self.logger.warning(f"DNS enumeration timed out for {domain}")
+        except Exception as e:
+            self.logger.error(f"Error in DNS passive enumeration: {e}")
         
         return subdomains
     
@@ -885,13 +931,80 @@ class ReconTools(BaseTools):
                 
                 async with aiohttp.ClientSession() as session:
                     await self.rate_limit()
-                    async with session.get(url, headers=headers) as response:
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
                         if response.status == 200:
                             data = await response.json()
                             for sub in data.get("subdomains", []):
                                 subdomains.add(f"{sub}.{domain}")
-            except Exception:
-                pass
+                        elif response.status == 401:
+                            self.logger.error("SecurityTrails API key is invalid or expired")
+                        elif response.status == 429:
+                            self.logger.warning("SecurityTrails rate limit exceeded")
+                        else:
+                            self.logger.warning(f"SecurityTrails API error: {response.status}")
+            except aiohttp.ClientError as e:
+                self.logger.warning(f"SecurityTrails API request failed: {e}")
+            except asyncio.TimeoutError:
+                self.logger.warning(f"SecurityTrails API timed out for {domain}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error in SecurityTrails search: {e}")
+        
+        # VirusTotal API
+        vt_key = self.config.get_api_key("virustotal")
+        if vt_key:
+            try:
+                url = f"https://www.virustotal.com/api/v3/domains/{domain}/subdomains"
+                headers = {"x-apikey": vt_key}
+                
+                async with aiohttp.ClientSession() as session:
+                    await self.rate_limit()
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for item in data.get('data', []):
+                                subdomain = item.get('id', '')
+                                if subdomain and (subdomain.endswith(f".{domain}") or subdomain == domain):
+                                    subdomains.add(subdomain.lower())
+                        elif response.status == 401:
+                            self.logger.error("VirusTotal API key is invalid or expired")
+                        elif response.status == 429:
+                            self.logger.warning("VirusTotal rate limit exceeded")
+                        else:
+                            self.logger.warning(f"VirusTotal API error: {response.status}")
+            except aiohttp.ClientError as e:
+                self.logger.warning(f"VirusTotal API request failed: {e}")
+            except asyncio.TimeoutError:
+                self.logger.warning(f"VirusTotal API timed out for {domain}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error in VirusTotal search: {e}")
+        
+        # Shodan API (optional)
+        shodan_key = self.config.get_api_key("shodan")
+        if shodan_key:
+            try:
+                url = f"https://api.shodan.io/dns/domain/{domain}"
+                params = {"key": shodan_key}
+                
+                async with aiohttp.ClientSession() as session:
+                    await self.rate_limit()
+                    async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for subdomain in data.get('subdomains', []):
+                                full_subdomain = f"{subdomain}.{domain}"
+                                subdomains.add(full_subdomain.lower())
+                        elif response.status == 401:
+                            self.logger.error("Shodan API key is invalid or expired")
+                        elif response.status == 429:
+                            self.logger.warning("Shodan rate limit exceeded")
+                        else:
+                            self.logger.warning(f"Shodan API error: {response.status}")
+            except aiohttp.ClientError as e:
+                self.logger.warning(f"Shodan API request failed: {e}")
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Shodan API timed out for {domain}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error in Shodan search: {e}")
         
         return subdomains
     
@@ -1071,8 +1184,8 @@ class ReconTools(BaseTools):
         except Exception as e:
             return {"error": str(e)}
     
-    async def _hunter_io_search(self, domain: str) -> List[str]:
-        """Search emails using Hunter.io API."""
+    async def _hunter_io_search(self, domain: str) -> List[Dict[str, Any]]:
+        """Search emails using Hunter.io API with detailed metadata."""
         api_key = self.config.get_api_key("hunter_io")
         if not api_key:
             return []
@@ -1081,20 +1194,79 @@ class ReconTools(BaseTools):
             url = f"https://api.hunter.io/v2/domain-search"
             params = {
                 "domain": domain,
-                "api_key": api_key
+                "api_key": api_key,
+                "limit": 100  # Max results per request
             }
             
             async with aiohttp.ClientSession() as session:
                 await self.rate_limit()
-                async with session.get(url, params=params) as response:
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as response:
                     if response.status == 200:
                         data = await response.json()
                         emails = []
-                        for email_data in data.get("data", {}).get("emails", []):
-                            emails.append(email_data.get("value"))
+                        
+                        # Extract detailed email information
+                        email_data = data.get("data", {})
+                        for email_info in email_data.get("emails", []):
+                            email_entry = {
+                                'email': email_info.get('value'),
+                                'first_name': email_info.get('first_name'),
+                                'last_name': email_info.get('last_name'),
+                                'position': email_info.get('position'),
+                                'type': email_info.get('type'),  # personal or generic
+                                'confidence': email_info.get('confidence'),
+                                'department': email_info.get('department'),
+                                'seniority': email_info.get('seniority'),
+                                'sources': [
+                                    {
+                                        'domain': src.get('domain'),
+                                        'uri': src.get('uri'),
+                                        'extracted_on': src.get('extracted_on'),
+                                        'still_on_page': src.get('still_on_page')
+                                    }
+                                    for src in email_info.get('sources', [])[:3]  # Limit to first 3 sources
+                                ]
+                            }
+                            emails.append(email_entry)
+                        
+                        # Extract email pattern if available
+                        pattern = email_data.get('pattern')
+                        if pattern:
+                            emails.append({
+                                'type': 'pattern',
+                                'pattern': pattern,
+                                'description': f"Email format pattern: {pattern}",
+                                'confidence': 100
+                            })
+                        
                         return emails
-        except Exception:
-            pass
+                    
+                    elif response.status == 401:
+                        self.logger.error("Hunter.io API key is invalid or expired")
+                        return []
+                    
+                    elif response.status == 429:
+                        self.logger.warning("Hunter.io rate limit exceeded")
+                        return []
+                    
+                    elif response.status == 400:
+                        error_data = await response.json()
+                        error_msg = error_data.get('errors', [{}])[0].get('details', 'Bad request')
+                        self.logger.error(f"Hunter.io API error: {error_msg}")
+                        return []
+                    
+                    else:
+                        self.logger.error(f"Hunter.io API error: HTTP {response.status}")
+                        return []
+                        
+        except aiohttp.ClientError as e:
+            self.logger.warning(f"Hunter.io API request failed: {e}")
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Hunter.io API timed out for {domain}")
+        except json.JSONDecodeError:
+            self.logger.error(f"Invalid JSON response from Hunter.io for {domain}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in Hunter.io search: {e}")
         
         return []
     
